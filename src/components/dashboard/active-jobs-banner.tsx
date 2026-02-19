@@ -6,21 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import {
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Search,
-  FileText,
-  Wand2,
-  Sparkles,
-  Image,
-  Tags,
-  Target,
-  ArrowRight,
-  ChevronDown,
-  ChevronUp,
+  Loader2, CheckCircle2, XCircle, Search, FileText, Wand2,
+  Sparkles, Image, Tags, Target, ArrowRight, ChevronDown, ChevronUp,
+  RefreshCw,
 } from "lucide-react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 interface Job {
   id: string;
@@ -28,19 +19,21 @@ interface Job {
   currentStep: string | null;
   progress: number;
   error: string | null;
-  keyword: string | null;
+  keywordId: string | null;
+  input: { keyword?: string } | null;
   createdAt: string;
   blogPostId: string | null;
+  isStuck?: boolean;
 }
 
 const STEP_CONFIG: Record<string, { label: string; icon: React.ElementType }> = {
   research: { label: "Research", icon: Search },
-  outline: { label: "Outline", icon: Target },
-  draft: { label: "Draft", icon: FileText },
-  tone: { label: "Tone Rewrite", icon: Wand2 },
-  seo: { label: "SEO Optimize", icon: Sparkles },
+  outline:  { label: "Outline",  icon: Target },
+  draft:    { label: "Draft",    icon: FileText },
+  tone:     { label: "Tone Rewrite", icon: Wand2 },
+  seo:      { label: "SEO Optimize", icon: Sparkles },
   metadata: { label: "Metadata", icon: Tags },
-  image: { label: "Image", icon: Image },
+  image:    { label: "Image",    icon: Image },
 };
 
 const STEP_ORDER = ["research", "outline", "draft", "tone", "seo", "metadata", "image"];
@@ -53,6 +46,7 @@ interface Props {
 export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
+  const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const [hasJobs, setHasJobs] = useState(initialJobCount > 0);
 
@@ -63,8 +57,6 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
       const data: Job[] = await res.json();
       setJobs(data);
       setHasJobs(data.length > 0);
-
-      // Stop polling when no active jobs
       if (data.length === 0 && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -76,133 +68,145 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
 
   useEffect(() => {
     if (!hasJobs) return;
-
     fetchJobs();
     pollRef.current = setInterval(fetchJobs, 3000);
-
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
+    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [fetchJobs, hasJobs]);
+
+  const handleRetry = async (jobId: string) => {
+    setRetrying(prev => new Set(prev).add(jobId));
+    try {
+      const res = await fetch(`/api/jobs/${jobId}`, { method: "POST" });
+      if (res.ok) {
+        toast.success("Job restarted!");
+        // Restart polling
+        setHasJobs(true);
+        fetchJobs();
+        if (!pollRef.current) {
+          pollRef.current = setInterval(fetchJobs, 3000);
+        }
+      } else {
+        toast.error("Failed to restart job");
+      }
+    } catch {
+      toast.error("Failed to restart job");
+    } finally {
+      setRetrying(prev => { const s = new Set(prev); s.delete(jobId); return s; });
+    }
+  };
 
   if (!hasJobs && jobs.length === 0) return null;
 
-  const activeJobs = jobs.filter(
-    (j) => j.status === "QUEUED" || j.status === "PROCESSING"
+  const activeJobs = jobs.filter(j =>
+    j.status === "QUEUED" || j.status === "PROCESSING" || j.status === "FAILED"
   );
-
   if (activeJobs.length === 0) return null;
 
+  const processingCount = activeJobs.filter(j => j.status === "PROCESSING" || j.status === "QUEUED").length;
+  const failedCount = activeJobs.filter(j => j.status === "FAILED").length;
+
   return (
-    <Card className="border-blue-200 bg-blue-50 overflow-hidden">
+    <Card className={`overflow-hidden ${failedCount > 0 && processingCount === 0 ? "border-red-200 bg-red-50" : "border-blue-200 bg-blue-50"}`}>
       <CardContent className="p-0">
-        {/* Header row */}
+        {/* Header */}
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+            {processingCount > 0 ? (
+              <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+            ) : (
+              <XCircle className="h-4 w-4 text-red-500 shrink-0" />
+            )}
             <div>
-              <p className="font-medium text-blue-900 text-sm">
-                Content generation in progress
+              <p className={`font-medium text-sm ${processingCount > 0 ? "text-blue-900" : "text-red-900"}`}>
+                {processingCount > 0 ? "Content generation in progress" : "Generation failed"}
               </p>
-              <p className="text-xs text-blue-700">
-                {activeJobs.length} active job{activeJobs.length !== 1 ? "s" : ""}
-                {activeJobs[0]?.keyword && ` · "${activeJobs[0].keyword}"`}
+              <p className={`text-xs ${processingCount > 0 ? "text-blue-700" : "text-red-700"}`}>
+                {processingCount > 0 && `${processingCount} active job${processingCount !== 1 ? "s" : ""}`}
+                {processingCount > 0 && failedCount > 0 && " · "}
+                {failedCount > 0 && `${failedCount} failed`}
+                {activeJobs[0]?.input?.keyword && ` · "${activeJobs[0].input.keyword}"`}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button
-              asChild
-              size="sm"
-              variant="outline"
-              className="border-blue-300 text-blue-800 hover:bg-blue-100 text-xs"
-            >
+            <Button asChild size="sm" variant="outline"
+              className={`text-xs ${processingCount > 0 ? "border-blue-300 text-blue-800 hover:bg-blue-100" : "border-red-300 text-red-800 hover:bg-red-100"}`}>
               <Link href={`/dashboard/websites/${websiteId}/generator`}>
-                View Details
-                <ArrowRight className="ml-1 h-3 w-3" />
+                View Details <ArrowRight className="ml-1 h-3 w-3" />
               </Link>
             </Button>
-            <button
-              onClick={() => setIsExpanded((v) => !v)}
-              className="p-1 rounded hover:bg-blue-100 text-blue-700"
-            >
-              {isExpanded ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
+            <button onClick={() => setIsExpanded(v => !v)}
+              className={`p-1 rounded ${processingCount > 0 ? "hover:bg-blue-100 text-blue-700" : "hover:bg-red-100 text-red-700"}`}>
+              {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </button>
           </div>
         </div>
 
-        {/* Expanded job details */}
+        {/* Job details */}
         {isExpanded && activeJobs.map((job) => {
+          const keyword = job.input?.keyword || "Generating…";
           const currentStepIdx = STEP_ORDER.indexOf(job.currentStep || "");
+          const isFailed = job.status === "FAILED";
 
           return (
-            <div
-              key={job.id}
-              className="border-t border-blue-200 px-4 py-3 bg-white/60"
-            >
-              {/* Progress bar */}
+            <div key={job.id} className={`border-t px-4 py-3 bg-white/60 ${isFailed ? "border-red-200" : "border-blue-200"}`}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-medium text-blue-900">
-                  {job.keyword || "Generating…"}
-                </span>
-                <span className="text-xs text-blue-700 font-medium">
-                  {job.progress}%
-                </span>
+                <span className="text-xs font-medium text-foreground">{keyword}</span>
+                <div className="flex items-center gap-2">
+                  {isFailed ? (
+                    <Button size="sm" variant="outline"
+                      className="h-6 text-[11px] px-2 border-red-300 text-red-700 hover:bg-red-50"
+                      onClick={() => handleRetry(job.id)}
+                      disabled={retrying.has(job.id)}
+                    >
+                      {retrying.has(job.id)
+                        ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                        : <RefreshCw className="h-3 w-3 mr-1" />}
+                      Retry
+                    </Button>
+                  ) : (
+                    <span className="text-xs text-blue-700 font-medium">{job.progress}%</span>
+                  )}
+                </div>
               </div>
-              <Progress value={job.progress} className="h-1.5 mb-3" />
+
+              {!isFailed && <Progress value={job.progress} className="h-1.5 mb-3" />}
 
               {/* Step pipeline */}
               <div className="flex items-center gap-1 flex-wrap">
                 {STEP_ORDER.map((stepId, idx) => {
                   const config = STEP_CONFIG[stepId];
                   const Icon = config.icon;
-                  const isDone =
-                    job.status === "COMPLETED" || idx < currentStepIdx;
-                  const isCurrent = job.currentStep === stepId;
-                  const isPending = idx > currentStepIdx && !isDone;
+                  const isDone = job.status === "COMPLETED" || idx < currentStepIdx;
+                  const isCurrent = job.currentStep === stepId && !isFailed;
+                  const isPending = !isDone && !isCurrent;
 
                   return (
-                    <div
-                      key={stepId}
-                      className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs transition-all ${
-                        isDone
-                          ? "bg-green-100 text-green-700"
-                          : isCurrent
-                            ? "bg-blue-100 text-blue-800 font-medium ring-1 ring-blue-300"
-                            : isPending
-                              ? "bg-muted/60 text-muted-foreground"
-                              : "bg-muted/60 text-muted-foreground"
+                    <div key={stepId}
+                      className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs transition-all ${
+                        isDone ? "bg-green-100 text-green-700" :
+                        isCurrent ? "bg-blue-100 text-blue-800 font-medium ring-1 ring-blue-300" :
+                        isFailed && idx === currentStepIdx ? "bg-red-100 text-red-700 ring-1 ring-red-300" :
+                        isPending ? "bg-muted/60 text-muted-foreground" : "bg-muted/60 text-muted-foreground"
                       }`}
                     >
                       {isDone ? (
                         <CheckCircle2 className="h-3 w-3 shrink-0 text-green-600" />
+                      ) : isFailed && idx === currentStepIdx ? (
+                        <XCircle className="h-3 w-3 shrink-0 text-red-500" />
                       ) : isCurrent ? (
                         <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
                       ) : (
-                        <Icon className="h-3 w-3 shrink-0 opacity-50" />
+                        <Icon className="h-3 w-3 shrink-0 opacity-40" />
                       )}
                       <span>{config.label}</span>
                     </div>
                   );
                 })}
-
-                {job.status === "FAILED" && (
-                  <Badge
-                    variant="destructive"
-                    className="text-xs gap-1 ml-1"
-                  >
-                    <XCircle className="h-3 w-3" />
-                    Failed
-                  </Badge>
-                )}
               </div>
 
               {job.error && (
-                <p className="text-xs text-red-700 mt-2 p-2 bg-red-50 rounded">
+                <p className="text-xs text-red-700 mt-2 p-2 bg-red-50 rounded border border-red-100">
                   {job.error}
                 </p>
               )}

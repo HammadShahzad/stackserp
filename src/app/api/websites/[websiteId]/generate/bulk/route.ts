@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -71,14 +71,14 @@ export async function POST(
           autoPublish,
         });
 
-        // Fire-and-forget each generation
-        setTimeout(async () => {
+        // Use after() to keep function alive post-response
+        after(async () => {
           try {
             await processJob(jobId);
           } catch (err) {
             console.error(`Bulk generation error for keyword ${kw.keyword}:`, err);
           }
-        }, 100);
+        });
 
         return { jobId, keyword: kw.keyword };
       })

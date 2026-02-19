@@ -2,7 +2,7 @@
  * POST /api/websites/[websiteId]/generate
  * Enqueue a blog generation job for the next pending keyword (or a specific one)
  */
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
@@ -94,16 +94,15 @@ export async function POST(
       autoPublish,
     });
 
-    // Process async — don't await (fire and forget)
-    // In production this would be a proper job queue worker (BullMQ/Inngest)
-    // For now we use a deferred promise
-    setTimeout(async () => {
+    // Use Next.js `after()` to keep the serverless function alive after response.
+    // This replaces setTimeout and prevents Vercel from killing the job mid-generation.
+    after(async () => {
       try {
         await processJob(jobId);
       } catch (err) {
         console.error("Background job failed:", err);
       }
-    }, 100);
+    });
 
     return NextResponse.json({
       jobId,

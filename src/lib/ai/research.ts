@@ -70,6 +70,7 @@ Format your response as JSON with these exact keys:
         return_related_questions: false,
         search_recency_filter: "month",
       }),
+      signal: AbortSignal.timeout(30000), // 30s hard timeout
     });
 
     if (!response.ok) {
