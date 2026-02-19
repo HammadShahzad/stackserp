@@ -1,5 +1,4 @@
 {
-  "comment": "Cron jobs are handled by system crontab on the DigitalOcean droplet (167.71.96.242), not Vercel. See server/setup-cron.sh",
   "functions": {
     "src/app/api/websites/[websiteId]/generate/route.ts": {
       "maxDuration": 300
