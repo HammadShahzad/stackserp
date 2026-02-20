@@ -130,11 +130,7 @@ BANNED AI PHRASES (NEVER USE):
 
 
   if (ctx.existingPosts?.length) {
-    prompt += `\n- Link to existing content where relevant:\n${ctx.existingPosts.map((p) => `  • "${p.title}" → ${p.url}`).join("\n")}`;
-  }
-
-  if (ctx.internalLinks?.length) {
-    prompt += `\n- Use these anchor text → URL mappings naturally in the content:\n${ctx.internalLinks.map((l) => `  • "${l.keyword}" → ${l.url}`).join("\n")}`;
+    prompt += `\n- When relevant, link to existing blog articles on the site (links will be provided in the SEO optimization step)`;
   }
 
   return prompt;
@@ -319,18 +315,31 @@ Output ONLY the rewritten blog post in Markdown format. Preserve all headings an
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
   await progress("seo", "Optimizing for SEO — keywords, links, structure...");
 
-  // Build internal link instructions
-  let internalLinkBlock = "";
+  // Build a single deduplicated internal link list (one entry per URL)
+  const seenUrls = new Set<string>();
+  const consolidatedLinks: { anchor: string; url: string }[] = [];
+
+  if (ctx.internalLinks?.length) {
+    for (const l of ctx.internalLinks) {
+      if (!seenUrls.has(l.url)) {
+        seenUrls.add(l.url);
+        consolidatedLinks.push({ anchor: l.keyword, url: l.url });
+      }
+    }
+  }
   if (ctx.existingPosts?.length) {
-    internalLinkBlock += "\n   Existing blog articles:\n" + ctx.existingPosts
-      .map((p) => `   - [${p.title}](${p.url}) - ${p.focusKeyword || p.title}`)
-      .join("\n");
+    for (const p of ctx.existingPosts) {
+      if (!seenUrls.has(p.url)) {
+        seenUrls.add(p.url);
+        consolidatedLinks.push({ anchor: p.focusKeyword || p.title, url: p.url });
+      }
+    }
   }
 
-  let keywordUrlBlock = "";
-  if (ctx.internalLinks?.length) {
-    keywordUrlBlock = "\n\n## MANDATORY Keyword-URL Pairs (ALWAYS link these keywords to their URLs when they appear in text):\n" +
-      ctx.internalLinks.map((l) => `   - "${l.keyword}" → ${l.url}`).join("\n");
+  let internalLinkBlock = "";
+  if (consolidatedLinks.length) {
+    internalLinkBlock = "\n\n## Internal Links (use each URL AT MOST ONCE — no duplicate links):\n" +
+      consolidatedLinks.map((l) => `   - "${l.anchor}" → ${l.url}`).join("\n");
   }
 
   const seoOptimized = await generateText(
@@ -341,8 +350,12 @@ Output ONLY the rewritten blog post in Markdown format. Preserve all headings an
 2. Naturally weave the primary keyword throughout (aim for 1-2% density — not stuffed, but present)
 3. Add related/LSI keywords naturally (synonyms, related terms people search for)
 4. Ensure proper heading hierarchy (H2, H3) — no heading level skips
-5. Add internal links using REAL markdown links to these pages where relevant:${internalLinkBlock}${keywordUrlBlock}
-   Link to 15-20 internal pages where naturally relevant. Spread links throughout the entire article, not just in one section. Use descriptive anchor text (not "click here"). Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real URLs only.
+5. Add internal links using REAL markdown links where naturally relevant:${internalLinkBlock}
+   CRITICAL RULES FOR INTERNAL LINKS:
+   - Each URL may appear AT MOST ONCE in the entire article. NEVER link to the same URL twice.
+   - Use 10-15 unique internal links spread throughout the article, not clustered in one section.
+   - Use descriptive anchor text (not "click here").
+   - Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real markdown links only.
 6. Make sure the intro paragraph contains the keyword
 ${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common questions (format as proper ## FAQ heading with ### for each question — this helps with Google's FAQ rich snippets)` : "7. Skip FAQ if not present"}
 8. Ensure paragraphs are scannable (3-4 sentences max)
@@ -376,6 +389,20 @@ Output ONLY the optimized blog post in Markdown format.`,
       }
     );
   }
+
+  // Post-process: remove duplicate links (keep first occurrence of each URL)
+  const linkedUrls = new Set<string>();
+  finalContent = finalContent.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    (fullMatch, anchor: string, url: string) => {
+      const normalizedUrl = url.replace(/\/$/, "").toLowerCase();
+      if (linkedUrls.has(normalizedUrl)) {
+        return anchor;
+      }
+      linkedUrls.add(normalizedUrl);
+      return fullMatch;
+    }
+  );
 
   // ─── STEP 6: METADATA ────────────────────────────────────────────
   await progress("metadata", "Generating SEO metadata, schema, and social captions...");
