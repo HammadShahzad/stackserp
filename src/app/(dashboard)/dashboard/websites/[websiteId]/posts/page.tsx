@@ -1,42 +1,11 @@
 import { getWebsite } from "@/lib/get-session";
 import prisma from "@/lib/prisma";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Plus,
-  MoreVertical,
-  Eye,
-  Edit,
-  Trash2,
-  ExternalLink,
-  FileText,
-  Send,
-  Archive,
-} from "lucide-react";
+import { Plus, FileText } from "lucide-react";
 import Link from "next/link";
-import { formatDistanceToNow } from "date-fns";
+import { PostsTable } from "./posts-table";
 
 const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
   PUBLISHED: "default",
@@ -69,6 +38,11 @@ export default async function PostsPage({
     review: posts.filter((p) => p.status === "REVIEW").length,
     scheduled: posts.filter((p) => p.status === "SCHEDULED").length,
   };
+
+  const appUrl = process.env.NEXTAUTH_URL || "";
+  const liveBaseUrl = website.customDomain
+    ? `https://${website.customDomain}`
+    : `${appUrl}/blog/${website.subdomain}`;
 
   return (
     <div className="space-y-6">
@@ -129,109 +103,20 @@ export default async function PostsPage({
       ) : (
         <Card>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[40%]">Title</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Keyword</TableHead>
-                  <TableHead className="text-right">Views</TableHead>
-                  <TableHead className="text-right">Score</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {posts.map((post) => (
-                  <TableRow key={post.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium truncate max-w-[300px]">
-                          {post.title}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          /{post.slug}
-                        </p>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={STATUS_BADGE_VARIANT[post.status] || "secondary"}>
-                        {post.status.toLowerCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {post.focusKeyword || "-"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <span className="flex items-center justify-end gap-1 text-sm">
-                        <Eye className="h-3 w-3" />
-                        {post.views}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {post.contentScore ? (
-                        <Badge
-                          variant={
-                            post.contentScore >= 80
-                              ? "default"
-                              : post.contentScore >= 60
-                                ? "outline"
-                                : "secondary"
-                          }
-                        >
-                          {post.contentScore}
-                        </Badge>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-muted-foreground">
-                        {formatDistanceToNow(new Date(post.createdAt), {
-                          addSuffix: true,
-                        })}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/dashboard/websites/${websiteId}/posts/${post.id}`}>
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <ExternalLink className="mr-2 h-4 w-4" />
-                            View Live
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Send className="mr-2 h-4 w-4" />
-                            Publish
-                          </DropdownMenuItem>
-                          <DropdownMenuItem>
-                            <Archive className="mr-2 h-4 w-4" />
-                            Archive
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <PostsTable
+              posts={posts.map(p => ({
+                id: p.id,
+                title: p.title,
+                slug: p.slug,
+                status: p.status,
+                focusKeyword: p.focusKeyword,
+                views: p.views,
+                contentScore: p.contentScore,
+                createdAt: p.createdAt,
+              }))}
+              websiteId={websiteId}
+              liveBaseUrl={liveBaseUrl}
+            />
           </CardContent>
         </Card>
       )}
