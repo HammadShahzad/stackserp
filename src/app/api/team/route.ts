@@ -4,6 +4,10 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { PLANS } from "@/lib/stripe";
 
+function isSystemAdmin(session: { user?: { systemRole?: string } } | null): boolean {
+  return session?.user?.systemRole === "ADMIN";
+}
+
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -35,6 +39,7 @@ export async function GET() {
       currentUserId: session.user.id,
       role: membership.role,
       plan: membership.organization.subscription?.plan || "FREE",
+      isSystemAdmin: isSystemAdmin(session),
     });
   } catch (error) {
     console.error("Error fetching team:", error);
@@ -75,20 +80,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Only owners and admins can invite members" }, { status: 403 });
     }
 
-    const plan = membership.organization.subscription?.plan || "FREE";
-    const maxMembers = PLANS[plan as keyof typeof PLANS]?.features?.teamMembers ?? 1;
-    const currentCount = membership.organization.members.length;
+    // System admins bypass plan limits
+    if (!isSystemAdmin(session)) {
+      const plan = membership.organization.subscription?.plan || "FREE";
+      const maxMembers = PLANS[plan as keyof typeof PLANS]?.features?.teamMembers ?? 1;
+      const currentCount = membership.organization.members.length;
 
-    if (maxMembers !== -1 && currentCount >= maxMembers) {
-      return NextResponse.json(
-        { error: `Your ${plan} plan allows ${maxMembers} team member(s). Upgrade to add more.` },
-        { status: 403 }
-      );
+      if (maxMembers !== -1 && currentCount >= maxMembers) {
+        return NextResponse.json(
+          { error: `Your ${plan} plan allows ${maxMembers} team member(s). Upgrade to add more.` },
+          { status: 403 }
+        );
+      }
     }
 
-    // Check if user exists
     const invitedUser = await prisma.user.findUnique({
-      where: { email },
+      where: { email: email.toLowerCase().trim() },
     });
 
     if (!invitedUser) {
@@ -98,7 +105,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Check if already a member
     const alreadyMember = await prisma.organizationMember.findFirst({
       where: {
         userId: invitedUser.id,

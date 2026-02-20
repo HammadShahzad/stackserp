@@ -64,6 +64,7 @@ export default function TeamPage() {
   const [currentUserId, setCurrentUserId] = useState("");
   const [myRole, setMyRole] = useState("MEMBER");
   const [plan, setPlan] = useState("FREE");
+  const [isSysAdmin, setIsSysAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isInviting, setIsInviting] = useState(false);
   const [removingId, setRemovingId] = useState<string | null>(null);
@@ -79,6 +80,7 @@ export default function TeamPage() {
         setCurrentUserId(data.currentUserId);
         setMyRole(data.role);
         setPlan(data.plan);
+        setIsSysAdmin(data.isSystemAdmin || false);
       }
     } catch {
       toast.error("Failed to load team");
@@ -138,10 +140,10 @@ export default function TeamPage() {
   };
 
   const maxMembers = PLAN_LIMITS[plan] ?? 1;
-  const canInvite =
-    (myRole === "OWNER" || myRole === "ADMIN") &&
-    (maxMembers === -1 || members.length < maxMembers);
   const isOwnerOrAdmin = myRole === "OWNER" || myRole === "ADMIN";
+  const canInvite =
+    isOwnerOrAdmin &&
+    (isSysAdmin || maxMembers === -1 || members.length < maxMembers);
 
   if (isLoading) {
     return (
@@ -171,8 +173,8 @@ export default function TeamPage() {
         )}
       </div>
 
-      {/* Plan limit warning */}
-      {maxMembers !== -1 && members.length >= maxMembers && isOwnerOrAdmin && (
+      {/* Plan limit warning — hidden for system admins who bypass limits */}
+      {!isSysAdmin && maxMembers !== -1 && members.length >= maxMembers && isOwnerOrAdmin && (
         <Card className="border-amber-200 bg-amber-50">
           <CardContent className="flex items-center justify-between p-4">
             <div className="flex items-center gap-3">

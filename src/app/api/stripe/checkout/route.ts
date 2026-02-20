@@ -27,13 +27,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const subscription = await prisma.subscription.findUnique({
+    // Find subscription by userId first, fallback to organization membership
+    let subscription = await prisma.subscription.findUnique({
       where: { userId: session.user.id },
     });
 
     if (!subscription) {
+      const membership = await prisma.organizationMember.findFirst({
+        where: { userId: session.user.id },
+        select: { organizationId: true },
+      });
+
+      if (membership) {
+        subscription = await prisma.subscription.findUnique({
+          where: { organizationId: membership.organizationId },
+        });
+      }
+    }
+
+    if (!subscription) {
       return NextResponse.json(
-        { error: "No subscription record found" },
+        { error: "No subscription record found. Please contact support." },
         { status: 404 },
       );
     }
