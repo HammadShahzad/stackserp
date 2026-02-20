@@ -18,6 +18,7 @@ import {
   Zap,
   User,
   CalendarDays,
+  Shield,
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,7 @@ interface AppSidebarProps {
     name?: string | null;
     email?: string | null;
     image?: string | null;
+    systemRole?: string;
   };
 }
 
@@ -127,6 +129,15 @@ export function AppSidebar({ websites, currentWebsiteId, user }: AppSidebarProps
     : [];
 
   const accountNavItems = [
+    ...(user.systemRole === "ADMIN"
+      ? [
+          {
+            title: "Admin Panel",
+            href: "/dashboard/admin",
+            icon: Shield,
+          },
+        ]
+      : []),
     {
       title: "Team",
       href: "/dashboard/team",

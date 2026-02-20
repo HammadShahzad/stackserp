@@ -21,6 +21,7 @@ model User {
   name          String?
   password      String?
   image         String?
+  role          UserRole  @default(USER)
   emailVerified DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
@@ -33,6 +34,11 @@ model User {
   organizations OrganizationMember[]
   subscription  Subscription?
   apiKeys       ApiKey[]
+}
+
+enum UserRole {
+  USER
+  ADMIN
 }
 
 model Account {

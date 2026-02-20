@@ -61,6 +61,14 @@ export const authOptions: NextAuthOptions = {
 
       // Load organization data
       if (token.id) {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: token.id as string },
+          select: { role: true }
+        });
+        if (dbUser) {
+          token.systemRole = dbUser.role;
+        }
+
         const membership = await prisma.organizationMember.findFirst({
           where: { userId: token.id as string },
           include: { organization: true },
@@ -87,6 +95,7 @@ export const authOptions: NextAuthOptions = {
         session.user.organizationId = token.organizationId as string;
         session.user.organizationName = token.organizationName as string;
         session.user.role = token.role as string;
+        session.user.systemRole = token.systemRole as string;
       }
       return session;
     },
