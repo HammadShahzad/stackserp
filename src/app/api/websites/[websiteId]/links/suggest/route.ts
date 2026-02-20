@@ -3,8 +3,9 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateJSON } from "@/lib/ai/gemini";
+import { crawlWebsite } from "@/lib/website-crawler";
 
-export const maxDuration = 60; // 60s max duration to allow Gemini and Perplexity to finish
+export const maxDuration = 60;
 
 export interface SuggestedLink {
   keyword: string;
@@ -15,55 +16,12 @@ export interface SuggestedLink {
 export interface SuggestResponse {
   suggestions: SuggestedLink[];
   steps: {
-    perplexity: "ok" | "skipped" | "failed";
+    crawl: "ok" | "failed";
     gemini: "ok" | "failed";
     error?: string;
     pagesFound: number;
   };
   error?: string;
-}
-
-async function discoverPagesWithPerplexity(domain: string): Promise<{
-  content: string;
-  status: "ok" | "skipped" | "failed";
-}> {
-  let apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return { content: "", status: "skipped" };
-  apiKey = apiKey.replace(/\\n/g, "").trim();
-
-  try {
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar-pro",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a website crawler assistant. List the real, actual pages/sections found on a website with their full URLs. Be factual — only include pages that actually exist.",
-          },
-          {
-            role: "user",
-            content: `Visit ${domain} and list all the important pages you find (homepage, product pages, feature pages, pricing, blog, about, contact, etc.). For each page provide: the page title and its full URL. Format as a simple list: "Page Title | https://full-url". Include at least 10-20 pages if they exist.`,
-          },
-        ],
-        max_tokens: 1500,
-        temperature: 0.1,
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
-
-    if (!response.ok) return { content: "", status: "failed" };
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? "";
-    return { content, status: content ? "ok" : "failed" };
-  } catch {
-    return { content: "", status: "failed" };
-  }
 }
 
 async function generateLinkPairsWithGemini(
@@ -134,6 +92,7 @@ export async function POST(
         brandUrl: true,
         niche: true,
         organizationId: true,
+        faviconUrl: true,
         internalLinks: { select: { keyword: true } },
       },
     });
@@ -155,15 +114,39 @@ export async function POST(
     const domain = (website.brandUrl || `https://${website.domain}`).replace(/\/$/, "");
     const existingKeywords = website.internalLinks.map((l: { keyword: string }) => l.keyword);
 
-    // Step 1: Discover pages with Perplexity
-    const perplexityResult = await discoverPagesWithPerplexity(domain);
+    // Crawl the actual website directly — no Perplexity needed
+    let crawlStatus: "ok" | "failed" = "failed";
+    let pagesContext = "";
+    let pagesFound = 0;
 
-    // Step 2: Generate keyword→URL pairs with Gemini (works even without Perplexity)
+    try {
+      const crawlResult = await crawlWebsite(domain);
+
+      // Auto-update favicon if we found one and it's not set
+      if (crawlResult.favicon && !website.faviconUrl) {
+        await prisma.website.update({
+          where: { id: websiteId },
+          data: { faviconUrl: crawlResult.favicon },
+        }).catch(() => {});
+      }
+
+      if (crawlResult.pages.length > 0) {
+        crawlStatus = "ok";
+        pagesFound = crawlResult.pages.length;
+        pagesContext = crawlResult.pages
+          .map((p) => `${p.title} | ${p.url}`)
+          .join("\n");
+      }
+    } catch (err) {
+      console.error("[Crawl error]", err);
+    }
+
+    // Generate keyword→URL pairs with Gemini using crawled pages
     const geminiResult = await generateLinkPairsWithGemini(
       domain,
       website.name,
       website.niche ?? "general",
-      perplexityResult.content,
+      pagesContext,
       existingKeywords
     );
 
@@ -177,15 +160,10 @@ export async function POST(
         (s.url.startsWith("http://") || s.url.startsWith("https://"))
     );
 
-    // Count pages found (lines with "|" separator)
-    const pagesFound = perplexityResult.content
-      ? perplexityResult.content.split("\n").filter((l) => l.includes("|")).length
-      : 0;
-
     const response: SuggestResponse = {
       suggestions: filtered,
       steps: {
-        perplexity: perplexityResult.status,
+        crawl: crawlStatus,
         gemini: geminiResult.status,
         error: geminiResult.error,
         pagesFound,

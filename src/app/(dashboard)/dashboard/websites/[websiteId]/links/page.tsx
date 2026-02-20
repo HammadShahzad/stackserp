@@ -51,7 +51,7 @@ interface SuggestedLink {
 }
 
 interface StepStatus {
-  perplexity: "ok" | "skipped" | "failed";
+  crawl: "ok" | "failed";
   gemini: "ok" | "failed";
   error?: string;
   pagesFound: number;
@@ -61,8 +61,8 @@ interface StepStatus {
 function AiGeneratingDialog({ open }: { open: boolean }) {
   const [stepIdx, setStepIdx] = useState(0);
   const steps = [
-    { icon: Globe, label: "Connecting to your website…", detail: "Using Perplexity to scan pages" },
-    { icon: Globe, label: "Discovering pages & sections…", detail: "Crawling homepage, features, pricing, blog…" },
+    { icon: Globe, label: "Crawling your website…", detail: "Fetching homepage and sitemap directly" },
+    { icon: Globe, label: "Discovering pages & sections…", detail: "Scanning links, features, pricing, blog…" },
     { icon: Sparkles, label: "Mapping keywords to URLs…", detail: "Gemini is creating link pairs" },
     { icon: Sparkles, label: "Filtering & ranking links…", detail: "Removing duplicates, validating URLs" },
     { icon: Sparkles, label: "Almost done…", detail: "Finalizing your internal link pairs" },
@@ -123,8 +123,8 @@ function AiGeneratingDialog({ open }: { open: boolean }) {
 
 // Result dialog after API responds — shows what happened before review
 function ResultStatusBanner({ steps }: { steps: StepStatus }) {
-  const allGood = steps.perplexity === "ok" && steps.gemini === "ok";
-  const geminiOnly = steps.perplexity !== "ok" && steps.gemini === "ok";
+  const allGood = steps.crawl === "ok" && steps.gemini === "ok";
+  const geminiOnly = steps.crawl !== "ok" && steps.gemini === "ok";
 
   if (allGood) {
     return (
@@ -132,7 +132,7 @@ function ResultStatusBanner({ steps }: { steps: StepStatus }) {
         <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium text-green-800">
-            Found {steps.pagesFound} pages with Perplexity
+            Found {steps.pagesFound} pages on your website
           </p>
           <p className="text-green-700 text-xs mt-0.5">
             Gemini mapped them to keyword→URL pairs below
@@ -148,13 +148,10 @@ function ResultStatusBanner({ steps }: { steps: StepStatus }) {
         <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium text-amber-800">
-            Perplexity {steps.perplexity === "skipped" ? "not configured" : "couldn't scan pages"}
+            Couldn&apos;t crawl your website directly
           </p>
           <p className="text-amber-700 text-xs mt-0.5">
-            Gemini generated links based on your domain pattern instead —
-            {steps.perplexity === "skipped"
-              ? " add PERPLEXITY_API_KEY for better results"
-              : " results may be less precise"}
+            Gemini generated links based on your domain pattern instead — results may be less precise
           </p>
         </div>
       </div>
@@ -173,7 +170,7 @@ function ResultStatusBanner({ steps }: { steps: StepStatus }) {
               {steps.error && <span className="block mt-1 bg-red-100 p-1.5 rounded text-red-800 font-mono text-[10px] break-all">{steps.error}</span>}
             </>
           ) : (
-            "Both Perplexity and Gemini failed — check your API keys"
+            "Both crawl and Gemini failed — check your website URL and API keys"
           )}
         </p>
       </div>
@@ -361,7 +358,7 @@ export default function InternalLinksPage() {
           <div className="text-sm">
             <p className="font-medium">Auto-generate scans your site</p>
             <p className="text-muted-foreground mt-0.5">
-              Click <strong>Auto-generate with AI</strong> — Perplexity discovers your pages,
+              Click <strong>Auto-generate with AI</strong> — we crawl your website directly,
               Gemini maps them to keyword→URL pairs. Review and save the ones you want.
             </p>
           </div>

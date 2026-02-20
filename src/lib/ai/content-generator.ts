@@ -1,6 +1,9 @@
 /**
  * Core AI Blog Generation Pipeline
  * 7-step process: Research → Outline → Draft → Tone → SEO → Metadata → Image
+ *
+ * Ported from InvoiceCave's proven 680-line blog-generator.ts with
+ * multi-website parameterization.
  */
 import { generateText, generateJSON } from "./gemini";
 import { researchKeyword, ResearchResult } from "./research";
@@ -39,6 +42,8 @@ export interface GeneratedPost {
   socialCaptions: {
     twitter: string;
     linkedin: string;
+    instagram: string;
+    facebook: string;
   };
   wordCount: number;
   readingTime: number;
@@ -67,8 +72,19 @@ const STEPS = [
   "image",
 ] as const;
 
+const IMAGE_STYLES = [
+  "flat vector illustration with bold colors and clean shapes",
+  "isometric 3D render with soft pastel palette",
+  "watercolor painting style with vibrant splashes",
+  "editorial illustration with geometric abstract elements",
+  "cinematic photorealistic scene with dramatic lighting",
+  "retro vintage poster style with muted tones",
+  "modern minimalist line art with accent color pops",
+  "collage-style mixed media with paper textures",
+];
+
 function buildSystemPrompt(ctx: WebsiteContext): string {
-  let prompt = `You are a senior content writer for ${ctx.brandName} (${ctx.brandUrl}).
+  let prompt = `You are a professional blog writer for ${ctx.brandName} (${ctx.brandUrl}).
 ${ctx.brandName} is a ${ctx.description}.
 Your target audience is: ${ctx.targetAudience}
 Writing tone: ${ctx.tone}
@@ -162,7 +178,10 @@ export async function generateBlogPost(
 
   // ─── STEP 1: RESEARCH ───────────────────────────────────────────
   await progress("research", `Researching "${keyword}" with Perplexity AI...`);
-  const research = await researchKeyword(keyword, ctx);
+  const research = await researchKeyword(keyword, {
+    ...ctx,
+    description: ctx.description,
+  });
 
   // ─── STEP 2: OUTLINE ────────────────────────────────────────────
   await progress("outline", "Creating content outline and structure...");
@@ -176,16 +195,24 @@ export async function generateBlogPost(
 Context:
 - Brand: ${ctx.brandName} (${ctx.niche})
 - Target audience: ${ctx.targetAudience}
-- Suggested angle: ${research.suggestedAngle}
-- Content gaps to address: ${research.contentGaps.slice(0, 3).join(", ")}
-- Competitor headings to beat: ${research.competitorHeadings.slice(0, 5).join(", ")}
 - Target word count: ${targetWords} words
 
+Research findings:
+${research.rawResearch.substring(0, 3000)}
+
+Content gaps to exploit (what competitors miss):
+${research.contentGaps.slice(0, 5).join("\n- ")}
+
+Common questions people ask:
+${research.commonQuestions.slice(0, 5).join("\n- ")}
+
 Create an outline with:
-- A compelling, SEO-optimized H1 title (include the keyword naturally)
+- A compelling, SEO-optimized H1 title (include the keyword naturally, 50-70 chars)
 - 5-7 H2 sections with 3-4 bullet points each
-${includeFAQ ? "- A FAQ section with 4-5 questions" : ""}
-- A strong conclusion with CTA
+- Cover everything top competitors cover PLUS the content gaps identified above
+${includeFAQ ? "- A FAQ section with 4-5 of the most commonly searched questions" : ""}
+- A "Key Takeaways" section near the top
+- A strong conclusion with CTA for ${ctx.brandName}
 
 Return JSON: { "title": "...", "sections": [{ "heading": "...", "points": ["..."] }], "uniqueAngle": "..." }`,
     systemPrompt
@@ -201,18 +228,26 @@ Title: ${outline.title}
 Outline to follow:
 ${outline.sections.map((s) => `## ${s.heading}\n${s.points.map((p) => `- ${p}`).join("\n")}`).join("\n\n")}
 
-Key facts to include:
-${research.keyStatistics.map((s) => `- ${s}`).join("\n")}
+Research data to incorporate:
+${research.rawResearch.substring(0, 4000)}
 
-Requirements:
-- Write in Markdown format with proper H2/H3 hierarchy
-${includeTableOfContents ? "- Add a table of contents after the intro" : ""}
-- Include the focus keyword "${keyword}" naturally throughout
-- Use concrete examples, data, and actionable advice
-- Write ${targetWords} words
-- End with a conclusion paragraph
-${includeFAQ ? "- Include a FAQ section near the end with 4-5 questions and detailed answers" : ""}
-- Write for ${ctx.targetAudience}`,
+## Guidelines:
+1. Write ${targetWords} words (aim for comprehensive coverage that beats competitors)
+2. Use a conversational, engaging tone — ${ctx.tone}
+3. Start with a table of contents linking to each H2 section
+4. Include an attention-grabbing introduction that uses the exact keyword "${keyword}" in the first 100 words
+5. Break content into clear sections with H2 and H3 headings (use keyword in at least one H2)
+6. Include practical tips, examples, and actionable advice
+7. Add bullet points, numbered lists, and comparison tables where appropriate
+8. Include statistics and data points from the research with context
+9. Add a "Key Takeaways" or "Quick Summary" box near the top for skimmers
+10. End with a strong conclusion that includes the keyword and a CTA mentioning ${ctx.brandName}
+11. Write in Markdown format
+12. Make it SEO-friendly by naturally incorporating the keyword and related terms
+13. Cover everything competitors cover PLUS the content gaps identified in research
+${includeFAQ ? "14. Include a FAQ section near the end with 4-5 common questions and detailed answers" : ""}
+
+Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the introduction paragraph.`,
     systemPrompt,
     { temperature: 0.75, maxTokens: 8192 }
   );
@@ -220,20 +255,24 @@ ${includeFAQ ? "- Include a FAQ section near the end with 4-5 questions and deta
   // ─── STEP 4: TONE REWRITE ────────────────────────────────────────
   await progress("tone", "Refining brand voice and tone...");
   const toneRewritten = await generateText(
-    `Rewrite this article to better match ${ctx.brandName}'s brand voice: "${ctx.tone}"
+    `You are a witty, self-aware writer who combines humor with genuinely insightful content. Think of a cheeky uncle who is also a thoughtful mentor — you make even dry topics feel like a standup set with useful takeaways.
 
-The content should feel natural, engaging, and authentic — not like generic AI writing.
+Rewrite the following blog post for ${ctx.brandName} to be more engaging, conversational, and fun to read. The brand voice is: "${ctx.tone}". Keep ALL the factual information, data, and structure intact. Just improve the tone:
 
-Guidelines:
-- Use conversational transitions and natural flow
-- Add personality and depth where appropriate
-- Keep all facts, data, and structure intact
+- Add humor and personality (dad jokes, pop culture references, playful sarcasm where appropriate)
+- Use relatable analogies that ${ctx.targetAudience} would appreciate
+- Make transitions smooth and natural
+- Keep it professional enough for a business audience
+- Don't overdo it — 80% informative, 20% entertaining
+- The content should feel natural, engaging, and authentic — not like generic AI writing
 - Ensure the keyword "${keyword}" appears naturally in the first 100 words
 - Do NOT add any new sections — only refine the existing content
-- Maintain Markdown formatting
+- Maintain all Markdown formatting, headings, lists, and tables
 
-Article to rewrite:
-${draft}`,
+## Blog Post:
+${draft}
+
+Output ONLY the rewritten blog post in Markdown format. Preserve all headings and structure.`,
     systemPrompt,
     { temperature: 0.7 }
   );
@@ -241,39 +280,47 @@ ${draft}`,
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
   await progress("seo", "Optimizing for SEO — keywords, links, structure...");
 
-  let linkInstructions: string;
-  if (ctx.internalLinks?.length || ctx.existingPosts?.length) {
-    const mappings = [
-      ...(ctx.internalLinks || []).map((l) => `"${l.keyword}" → ${l.url}`),
-      ...(ctx.existingPosts || []).map((p) => `"${p.focusKeyword || p.title}" → ${p.url}`),
-    ];
-    linkInstructions = `6. Insert 3-8 internal links using these anchor text → URL mappings. Use markdown link syntax [anchor text](URL). Only use links that fit naturally:\n${mappings.map((m) => `   - ${m}`).join("\n")}`;
-  } else {
-    linkInstructions = "6. Add [INTERNAL_LINK: relevant anchor text] placeholders where internal links would help (3-5 places)";
+  // Build internal link instructions
+  let internalLinkBlock = "";
+  if (ctx.existingPosts?.length) {
+    internalLinkBlock += "\n   Existing blog articles:\n" + ctx.existingPosts
+      .map((p) => `   - [${p.title}](${p.url}) - ${p.focusKeyword || p.title}`)
+      .join("\n");
+  }
+
+  let keywordUrlBlock = "";
+  if (ctx.internalLinks?.length) {
+    keywordUrlBlock = "\n\n## MANDATORY Keyword-URL Pairs (ALWAYS link these keywords to their URLs when they appear in text):\n" +
+      ctx.internalLinks.map((l) => `   - "${l.keyword}" → ${l.url}`).join("\n");
   }
 
   const seoOptimized = await generateText(
-    `SEO-optimize this article for the focus keyword: "${keyword}"
+    `You are an SEO expert. Optimize the following blog post for the keyword "${keyword}" while retaining the same writing style and tone.
 
-Tasks:
-1. Ensure focus keyword appears in: H1, first paragraph, at least 2 H2s, conclusion
-2. Add 2-4 secondary/LSI keywords naturally (related terms, synonyms)
-3. Ensure proper H2 → H3 hierarchy
-4. Make sure the intro (first 150 words) hooks the reader and includes the keyword
-5. Ensure every paragraph is 2-4 sentences max (readability)
-${linkInstructions}
-7. Keep the article length at ${targetWords} words
+## Rules:
+1. Use the exact keyword "${keyword}" in the first 100 words, at least one H2 heading, and the conclusion
+2. Naturally weave the primary keyword throughout (aim for 1-2% density — not stuffed, but present)
+3. Add related/LSI keywords naturally (synonyms, related terms people search for)
+4. Ensure proper heading hierarchy (H2, H3) — no heading level skips
+5. Add internal links using REAL markdown links to these pages where relevant:${internalLinkBlock}${keywordUrlBlock}
+   Link to 3-6 internal pages where naturally relevant. Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real URLs only.
+6. Make sure the intro paragraph contains the keyword
+${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common questions (format as proper ## FAQ heading with ### for each question — this helps with Google's FAQ rich snippets)` : "7. Skip FAQ if not present"}
+8. Ensure paragraphs are scannable (3-4 sentences max)
+9. DO NOT stuff keywords — keep it natural
+10. Preserve the humor and conversational tone — do not make it robotic
+11. If there's a table of contents, ensure it matches the actual headings
+12. Keep the article length at ${targetWords} words
 
-Do NOT change the overall structure or add new sections.
-Return the full optimized article in Markdown.
+## Blog Post:
+${toneRewritten}
 
-Article:
-${toneRewritten}`,
+Output ONLY the optimized blog post in Markdown format.`,
     systemPrompt,
     { temperature: 0.4 }
   );
 
-  // Post-process: replace leftover [INTERNAL_LINK: ...] placeholders with real links
+  // Post-process: replace leftover [INTERNAL_LINK: ...] placeholders
   let finalContent = seoOptimized;
   if (ctx.internalLinks?.length) {
     finalContent = finalContent.replace(
@@ -302,32 +349,36 @@ ${toneRewritten}`,
     category: string;
     twitterCaption: string;
     linkedinCaption: string;
+    instagramCaption: string;
+    facebookCaption: string;
     structuredData: object;
     featuredImageAlt: string;
   }
 
   const metadata = await generateJSON<MetadataResult>(
-    `Generate complete SEO metadata for this blog post about "${keyword}" for ${ctx.brandName}.
+    `Generate SEO metadata and social media captions for this blog post about "${keyword}" for ${ctx.brandName} (${ctx.brandUrl}).
 
-Article title: ${outline.title}
-Brand: ${ctx.brandName} (${ctx.brandUrl})
-Niche: ${ctx.niche}
+## Blog Post:
+${finalContent.substring(0, 3000)}
 
-Generate:
-1. metaTitle: SEO title ≤60 chars, includes keyword, compelling
-2. metaDescription: ≤155 chars, includes keyword, has a call to action
-3. excerpt: 1-2 sentence teaser (160-200 chars)
-4. slug: URL-friendly slug from title (lowercase, hyphens, no stop words, ≤60 chars)
-5. secondaryKeywords: array of 3-5 related keywords
-6. tags: array of 4-6 topic tags
-7. category: single category name
-8. twitterCaption: engaging tweet with hashtags (≤280 chars)
-9. linkedinCaption: professional LinkedIn post (2-3 sentences + hashtags)
-10. structuredData: JSON-LD Article schema object
-11. featuredImageAlt: descriptive alt text for featured image (includes keyword)
-
-Return valid JSON with all these keys.`,
-    "You are an SEO specialist. Return valid JSON only."
+Output ONLY valid JSON (no markdown code fences) with this exact structure:
+{
+  "title": "Compelling blog title (50-70 chars, include keyword)",
+  "slug": "url-friendly-slug-with-keyword (lowercase, hyphens, no stop words, ≤60 chars)",
+  "excerpt": "2-3 sentence summary for preview cards (160-200 chars)",
+  "metaTitle": "SEO title tag (under 60 chars, keyword near front)",
+  "metaDescription": "SEO meta description (under 155 chars, include keyword, call to action)",
+  "secondaryKeywords": ["keyword1", "keyword2", "keyword3", "keyword4", "keyword5"],
+  "category": "Single category name relevant to ${ctx.niche}",
+  "tags": ["tag1", "tag2", "tag3", "tag4"],
+  "twitterCaption": "Engaging tweet under 280 chars with hashtags",
+  "linkedinCaption": "Professional LinkedIn post (2-3 paragraphs with emojis and hashtags)",
+  "instagramCaption": "Instagram caption with emojis and hashtags",
+  "facebookCaption": "Facebook post (2-3 sentences, conversational)",
+  "structuredData": { "@context": "https://schema.org", "@type": "Article", "headline": "...", "description": "...", "author": { "@type": "Organization", "name": "${ctx.brandName}" } },
+  "featuredImageAlt": "Descriptive alt text for featured image (includes keyword)"
+}`,
+    "You are an SEO specialist and social media expert. Return valid JSON only."
   );
 
   // ─── STEP 7: IMAGE GENERATION ────────────────────────────────────
@@ -337,26 +388,36 @@ Return valid JSON with all these keys.`,
   if (includeImages && process.env.GOOGLE_AI_API_KEY) {
     await progress("image", "Generating featured image with Imagen 4.0...");
     try {
-      const imagePrompt = await generateText(
-        `Create a professional, eye-catching image prompt for a blog post titled: "${outline.title}"
-        
-The image should represent "${keyword}" in the context of ${ctx.niche}.
-Style: Clean, modern, professional. Suitable for a B2B blog.
-No text in the image.
-Describe the scene in 2-3 sentences for an AI image generator.
+      const artStyle = IMAGE_STYLES[Math.floor(Math.random() * IMAGE_STYLES.length)];
 
-Return only the image prompt, nothing else.`,
-        "You are a creative director specializing in B2B content marketing visuals."
+      const imagePrompt = await generateText(
+        `Create 1 unique, creative image generation prompt for a blog hero image.
+
+Topic: "${keyword}"
+Article title: "${outline.title}"
+
+CRITICAL RULES:
+- DO NOT use generic "desk with laptop" or "office workspace" scenes. Be creative!
+- The image must visually represent the SPECIFIC topic, not just "business" in general
+- Use this art style: ${artStyle}
+- Think about metaphors, symbols, and creative scenes that capture the topic's essence
+- No text, no words, no letters in the image
+- The image should be eye-catching and unique, something that would stop a reader scrolling
+
+## Blog context (first 2000 chars):
+${finalContent.substring(0, 2000)}
+
+Output ONLY the detailed image prompt (2-3 sentences), nothing else.`,
+        "You are a creative director specializing in content marketing visuals."
       );
 
       featuredImageUrl = await generateBlogImage(
         imagePrompt,
-        `${metadata.slug}-featured`,
+        `${metadata.slug || slugify(outline.title)}-featured`,
         website.id
       );
     } catch (err) {
       console.error("Image generation failed:", err);
-      // Continue without image
     }
   } else if (includeImages) {
     await progress("image", "Skipping image generation (API key not configured)...");
@@ -381,6 +442,8 @@ Return only the image prompt, nothing else.`,
     socialCaptions: {
       twitter: metadata.twitterCaption || "",
       linkedin: metadata.linkedinCaption || "",
+      instagram: metadata.instagramCaption || "",
+      facebook: metadata.facebookCaption || "",
     },
     wordCount,
     readingTime,

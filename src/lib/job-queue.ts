@@ -60,17 +60,16 @@ export async function processJob(jobId: string): Promise<void> {
   const input = job.input as unknown as JobInput;
 
   try {
-    // Fetch website with blog settings, existing posts, and internal links
-    const [website, existingPosts, internalLinks] = await Promise.all([
+    const [website, existingPosts, manualLinks] = await Promise.all([
       prisma.website.findUnique({
         where: { id: input.websiteId },
         include: { blogSettings: true },
       }),
       prisma.blogPost.findMany({
         where: { websiteId: input.websiteId, status: "PUBLISHED" },
-        select: { title: true, slug: true, focusKeyword: true },
+        select: { title: true, slug: true, focusKeyword: true, secondaryKeywords: true },
         orderBy: { publishedAt: "desc" },
-        take: 50,
+        take: 100,
       }),
       prisma.internalLinkPair.findMany({
         where: { websiteId: input.websiteId },
@@ -80,12 +79,51 @@ export async function processJob(jobId: string): Promise<void> {
 
     if (!website) throw new Error("Website not found");
 
+    const baseUrl = website.brandUrl.replace(/\/$/, "");
+    const blogBase = website.customDomain
+      ? `https://${website.customDomain}`
+      : `${baseUrl}/blog`;
+
     const postLinks = existingPosts.map((p) => ({
       title: p.title,
       slug: p.slug,
-      url: `${website.brandUrl.replace(/\/$/, "")}/blog/${p.slug}`,
+      url: website.customDomain
+        ? `https://${website.customDomain}/${p.slug}`
+        : `${baseUrl}/blog/${p.slug}`,
       focusKeyword: p.focusKeyword || "",
     }));
+
+    // Build internal links from actual published posts (primary source)
+    const postBasedLinks: { keyword: string; url: string }[] = [];
+    const seenKeywords = new Set<string>();
+
+    for (const p of existingPosts) {
+      const postUrl = website.customDomain
+        ? `https://${website.customDomain}/${p.slug}`
+        : `${baseUrl}/blog/${p.slug}`;
+
+      if (p.focusKeyword && !seenKeywords.has(p.focusKeyword.toLowerCase())) {
+        seenKeywords.add(p.focusKeyword.toLowerCase());
+        postBasedLinks.push({ keyword: p.focusKeyword, url: postUrl });
+      }
+
+      if (p.secondaryKeywords?.length) {
+        for (const kw of p.secondaryKeywords.slice(0, 2)) {
+          if (kw && !seenKeywords.has(kw.toLowerCase())) {
+            seenKeywords.add(kw.toLowerCase());
+            postBasedLinks.push({ keyword: kw, url: postUrl });
+          }
+        }
+      }
+    }
+
+    // Merge: post-based links first, then manual/configured links for non-blog pages
+    const allInternalLinks = [
+      ...postBasedLinks,
+      ...manualLinks
+        .filter((l) => !seenKeywords.has(l.keyword.toLowerCase()))
+        .map((l) => ({ keyword: l.keyword, url: l.url })),
+    ];
 
     const onProgress: ProgressCallback = async (progress) => {
       await prisma.generationJob.update({
@@ -114,7 +152,7 @@ export async function processJob(jobId: string): Promise<void> {
         includeFAQ: input.includeFAQ ?? true,
         onProgress,
         existingPosts: postLinks,
-        internalLinks: internalLinks.map((l) => ({ keyword: l.keyword, url: l.url })),
+        internalLinks: allInternalLinks,
       }
     );
 

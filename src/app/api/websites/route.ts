@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { createWebsiteSchema } from "@/lib/validators/website";
+import { fetchFavicon } from "@/lib/website-crawler";
 
 export async function GET() {
   try {
@@ -110,6 +111,18 @@ export async function POST(req: Request) {
         postsPerWeek: 3,
       },
     });
+
+    // Auto-fetch favicon from the live website (non-blocking)
+    if (validated.brandUrl) {
+      fetchFavicon(validated.brandUrl).then((favicon) => {
+        if (favicon) {
+          prisma.website.update({
+            where: { id: website.id },
+            data: { faviconUrl: favicon },
+          }).catch(() => {});
+        }
+      }).catch(() => {});
+    }
 
     // Update subscription website count
     if (subscription) {

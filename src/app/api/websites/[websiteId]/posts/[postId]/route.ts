@@ -164,6 +164,9 @@ export async function DELETE(
       prisma.generationJob.deleteMany({
         where: { blogPostId: postId, websiteId },
       }),
+      prisma.postVersion.deleteMany({
+        where: { blogPostId: postId },
+      }),
       prisma.blogPost.delete({ where: { id: postId, websiteId } }),
     ]);
 

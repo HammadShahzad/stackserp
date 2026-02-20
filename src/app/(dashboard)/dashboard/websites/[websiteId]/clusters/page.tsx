@@ -58,7 +58,7 @@ interface SuggestedCluster {
 }
 
 interface StepStatus {
-  perplexity: "ok" | "skipped" | "failed";
+  crawl: "ok" | "failed";
   gemini: "ok" | "failed";
   error?: string;
 }
@@ -73,9 +73,9 @@ const STATUS_COLORS: Record<string, string> = {
 function AiGeneratingDialog({ open }: { open: boolean }) {
   const [stepIdx, setStepIdx] = useState(0);
   const steps = [
-    { icon: Globe,    label: "Visiting your website…",            detail: "Perplexity is reading your pages" },
+    { icon: Globe,    label: "Crawling your website…",            detail: "Fetching pages and sitemap directly" },
     { icon: Globe,    label: "Identifying core topics…",          detail: "Analyzing what your business offers" },
-    { icon: Globe,    label: "Mapping competitor gaps…",          detail: "Finding what your customers search for" },
+    { icon: Globe,    label: "Mapping content themes…",           detail: "Finding what your customers search for" },
     { icon: Sparkles, label: "Designing cluster structure…",      detail: "Gemini is grouping topics into pillars" },
     { icon: Sparkles, label: "Writing supporting keywords…",      detail: "Generating long-tail keyword variations" },
     { icon: Sparkles, label: "Almost done…",                      detail: "Finalizing your topic clusters" },
@@ -126,7 +126,7 @@ function AiGeneratingDialog({ open }: { open: boolean }) {
         </div>
 
         <p className="text-xs text-muted-foreground pb-2">
-          This usually takes 20–40 seconds — Perplexity + Gemini are working
+          This usually takes 15–30 seconds
         </p>
       </DialogContent>
     </Dialog>
@@ -135,33 +135,30 @@ function AiGeneratingDialog({ open }: { open: boolean }) {
 
 // ── Status banner shown inside the review dialog ─────────────────────────────
 function ResultStatusBanner({ steps }: { steps: StepStatus }) {
-  if (steps.perplexity === "ok" && steps.gemini === "ok") {
+  if (steps.crawl === "ok" && steps.gemini === "ok") {
     return (
       <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-sm">
         <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium text-green-800">Research completed successfully</p>
           <p className="text-green-700 text-xs mt-0.5">
-            Perplexity researched your website · Gemini designed the clusters below
+            Crawled your website · Gemini designed the clusters below
           </p>
         </div>
       </div>
     );
   }
 
-  if (steps.perplexity !== "ok" && steps.gemini === "ok") {
+  if (steps.crawl !== "ok" && steps.gemini === "ok") {
     return (
       <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
         <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
         <div>
           <p className="font-medium text-amber-800">
-            Perplexity {steps.perplexity === "skipped" ? "not configured" : "couldn't reach your site"}
+            Couldn&apos;t crawl your website directly
           </p>
           <p className="text-amber-700 text-xs mt-0.5">
-            Gemini used your brand description instead —{" "}
-            {steps.perplexity === "skipped"
-              ? "add PERPLEXITY_API_KEY in your .env for better accuracy"
-              : "clusters may be less precise than usual"}
+            Gemini used your brand description instead — clusters may be less precise than usual
           </p>
         </div>
       </div>
@@ -330,6 +327,33 @@ export default function ClustersPage() {
     }
   };
 
+  const handleAddToQueue = async (cluster: TopicCluster) => {
+    const allKeywords = [cluster.pillarKeyword, ...cluster.supportingKeywords];
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/keywords`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keywords: allKeywords }),
+      });
+      if (res.ok) {
+        toast.success(`Added ${allKeywords.length} keywords to queue`);
+        // Update cluster status
+        await fetch(`/api/websites/${websiteId}/clusters`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ updateStatus: true, clusterId: cluster.id, status: "IN_PROGRESS" }),
+        }).catch(() => {});
+        setClusters((prev) =>
+          prev.map((c) => (c.id === cluster.id ? { ...c, status: "IN_PROGRESS" } : c))
+        );
+      } else {
+        toast.error("Failed to add keywords");
+      }
+    } catch {
+      toast.error("Something went wrong");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-24">
@@ -415,7 +439,7 @@ export default function ClustersPage() {
               A pillar page covers a broad topic, while supporting pages cover related subtopics.
               Internal linking between them signals authority to Google.{" "}
               <span className="text-foreground font-medium">
-                AI uses Perplexity to research your actual website
+                AI crawls your actual website
               </span>{" "}
               before generating — so results are specific to your business.
             </p>
@@ -430,7 +454,7 @@ export default function ClustersPage() {
             <Network className="h-12 w-12 text-muted-foreground/40 mb-4" />
             <h3 className="text-lg font-semibold mb-2">No topic clusters yet</h3>
             <p className="text-muted-foreground text-sm max-w-sm mb-6">
-              AI researches your actual website with Perplexity then generates clusters
+              AI crawls your actual website then generates clusters
               specific to your business — not generic templates.
             </p>
             <Button onClick={handleAIGenerate} disabled={isGenerating}>
@@ -488,6 +512,15 @@ export default function ClustersPage() {
                         <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
                       ))}
                     </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-4 gap-1.5"
+                      onClick={() => handleAddToQueue(cluster)}
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add All to Keyword Queue
+                    </Button>
                   </div>
                 </CardContent>
               )}

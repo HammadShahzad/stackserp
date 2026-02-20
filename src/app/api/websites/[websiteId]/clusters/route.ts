@@ -4,8 +4,9 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateJSON } from "@/lib/ai/gemini";
 import { verifyWebsiteAccess } from "@/lib/api-helpers";
+import { crawlWebsite } from "@/lib/website-crawler";
 
-export const maxDuration = 60; // 60s max duration to allow Gemini and Perplexity to finish
+export const maxDuration = 60;
 
 interface ClusterData {
   pillarKeyword: string;
@@ -14,54 +15,17 @@ interface ClusterData {
   rationale: string;
 }
 
-async function researchWebsiteWithPerplexity(
+async function researchWebsiteDirectly(
   brandUrl: string,
-  brandName: string,
-  niche: string
-): Promise<{ content: string; status: "ok" | "skipped" | "failed" }> {
-  let apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return { content: "", status: "skipped" };
-  apiKey = apiKey.replace(/\\n/g, "").trim();
-
+): Promise<{ content: string; status: "ok" | "failed" }> {
   try {
-    const response = await fetch("https://api.perplexity.ai/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "sonar-pro",
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are an SEO research expert. Analyze websites and identify the core topics and content themes they should rank for.",
-          },
-          {
-            role: "user",
-            content: `Research the website ${brandUrl} (brand: "${brandName}", niche: "${niche}").
+    const crawl = await crawlWebsite(brandUrl);
+    if (crawl.pages.length === 0) return { content: "", status: "failed" };
 
-Identify:
-1. What specific products, features, or services does this business offer?
-2. What are the main problems they solve for customers?
-3. What are the top 5-8 content themes/topics this business SHOULD rank for on Google?
-4. What do their competitors write about?
-5. What questions do their target customers search for?
-
-Be specific to THIS business, not generic. Only mention topics that are directly relevant.`,
-          },
-        ],
-        max_tokens: 1500,
-        temperature: 0.2,
-      }),
-      signal: AbortSignal.timeout(25000),
-    });
-
-    if (!response.ok) return { content: "", status: "failed" };
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content ?? "";
-    return { content, status: content ? "ok" : "failed" };
+    const content = crawl.pages
+      .map((p) => `${p.title} — ${p.url}`)
+      .join("\n");
+    return { content, status: "ok" };
   } catch {
     return { content: "", status: "failed" };
   }
@@ -202,12 +166,8 @@ export async function POST(
       const existingKeywords = website.blogKeywords.map((k: { keyword: string }) => k.keyword);
       const siteUrl = website.brandUrl || (website.domain ? `https://${website.domain}` : "");
 
-      // Step 1: Research the actual website with Perplexity
-      const research = await researchWebsiteWithPerplexity(
-        siteUrl,
-        website.brandName,
-        website.niche
-      );
+      // Step 1: Crawl the website directly (no Perplexity needed)
+      const research = await researchWebsiteDirectly(siteUrl);
 
       // Step 2: Generate tailored clusters with Gemini
       const geminiResult = await generateClustersWithGemini(
@@ -224,11 +184,10 @@ export async function POST(
         research.content
       );
 
-      // Return suggestions + diagnostic info for review
       return NextResponse.json({
         suggestions: geminiResult.clusters,
         steps: {
-          perplexity: research.status,
+          crawl: research.status,
           gemini: geminiResult.status,
           error: geminiResult.error,
         },
@@ -251,6 +210,15 @@ export async function POST(
         )
       );
       return NextResponse.json(created, { status: 201 });
+    }
+
+    // --- Update cluster status ---
+    if (body.updateStatus && body.clusterId) {
+      const updated = await prisma.topicCluster.update({
+        where: { id: body.clusterId, websiteId },
+        data: { status: body.status || "IN_PROGRESS" },
+      });
+      return NextResponse.json(updated);
     }
 
     // --- Manual single cluster creation ---
