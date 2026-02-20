@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { runPublishHook } from "@/lib/on-publish";
+import { calculateContentScore } from "@/lib/seo-scorer";
 
 async function verifyAccess(websiteId: string, userId: string) {
   const membership = await prisma.organizationMember.findFirst({
@@ -69,6 +70,26 @@ export async function PATCH(
       const wc = body.content.split(/\s+/).filter(Boolean).length;
       updateData.wordCount = wc;
       updateData.readingTime = Math.ceil(wc / 200);
+    }
+
+    // Recalculate SEO content score when relevant fields change
+    if (body.content || body.title || body.metaTitle || body.metaDescription || body.focusKeyword || body.featuredImage) {
+      const current = await prisma.blogPost.findUnique({
+        where: { id: postId },
+        select: { title: true, content: true, metaTitle: true, metaDescription: true, focusKeyword: true, featuredImage: true, featuredImageAlt: true },
+      });
+      if (current) {
+        const { score } = calculateContentScore({
+          content: (body.content as string) || current.content,
+          title: (body.title as string) || current.title,
+          metaTitle: (body.metaTitle as string) ?? current.metaTitle,
+          metaDescription: (body.metaDescription as string) ?? current.metaDescription,
+          focusKeyword: (body.focusKeyword as string) ?? current.focusKeyword,
+          featuredImage: (body.featuredImage as string) ?? current.featuredImage,
+          featuredImageAlt: (body.featuredImageAlt as string) ?? current.featuredImageAlt,
+        });
+        updateData.contentScore = score;
+      }
     }
 
     const wasPublished = (await prisma.blogPost.findUnique({

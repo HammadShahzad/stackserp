@@ -105,8 +105,32 @@ export default function GeneratorPage() {
     }
   };
 
+  const fetchActiveJob = async () => {
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/jobs`);
+      if (!res.ok) return;
+      const jobs = await res.json();
+      const running = jobs.find(
+        (j: { status: string }) => j.status === "QUEUED" || j.status === "PROCESSING"
+      );
+      if (running) {
+        setActiveJob({
+          id: running.id,
+          status: running.status,
+          currentStep: running.currentStep,
+          progress: running.progress,
+          error: running.error,
+        });
+        pollJob(running.id);
+      }
+    } catch {
+      // silent
+    }
+  };
+
   useEffect(() => {
     fetchKeywords();
+    fetchActiveJob();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [websiteId]);
 

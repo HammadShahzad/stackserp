@@ -8,6 +8,7 @@ import prisma from "./prisma";
 import { generateBlogPost, ProgressCallback } from "./ai/content-generator";
 import type { JobType } from "@prisma/client";
 import { runPublishHook } from "./on-publish";
+import { calculateContentScore } from "./seo-scorer";
 
 export interface JobInput {
   keywordId: string;
@@ -131,7 +132,16 @@ export async function processJob(jobId: string): Promise<void> {
 
     const status = input.autoPublish ? "PUBLISHED" : "REVIEW";
 
-    // Save blog post
+    const { score: contentScore } = calculateContentScore({
+      content: generated.content,
+      title: generated.title,
+      metaTitle: generated.metaTitle,
+      metaDescription: generated.metaDescription,
+      focusKeyword: generated.focusKeyword,
+      featuredImage: generated.featuredImageUrl,
+      featuredImageAlt: generated.featuredImageAlt,
+    });
+
     const blogPost = await prisma.blogPost.create({
       data: {
         title: generated.title,
@@ -146,6 +156,7 @@ export async function processJob(jobId: string): Promise<void> {
         featuredImageAlt: generated.featuredImageAlt || null,
         structuredData: generated.structuredData,
         socialCaptions: generated.socialCaptions,
+        contentScore,
         wordCount: generated.wordCount,
         readingTime: generated.readingTime,
         tags: generated.tags,
