@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Logo } from "@/components/ui/logo";
 import {
   Zap,
   Search,
@@ -25,7 +26,7 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-16">
             <Link href="/" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Zap className="h-5 w-5" />
+                <Logo className="h-5 w-5" />
               </div>
               <span className="text-xl font-bold">StackSerp</span>
             </Link>
@@ -312,7 +313,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground">
-              <Zap className="h-4 w-4" />
+              <Logo className="h-4 w-4" />
             </div>
             <span className="font-semibold">StackSerp</span>
           </div>

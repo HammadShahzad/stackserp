@@ -4,6 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Logo } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -74,7 +75,7 @@ export default function RegisterPage() {
       <div className="w-full max-w-md">
         <div className="flex items-center justify-center gap-2 mb-8">
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Zap className="h-6 w-6" />
+            <Logo className="h-6 w-6" />
           </div>
           <span className="text-2xl font-bold">StackSerp</span>
         </div>

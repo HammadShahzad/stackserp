@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Logo } from "@/components/ui/logo";
 import {
   BarChart3,
   Globe,
@@ -162,7 +163,7 @@ export function AppSidebar({ websites, currentWebsiteId, user }: AppSidebarProps
       <SidebarHeader className="border-b px-4 py-3">
         <Link href="/dashboard" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Zap className="h-5 w-5" />
+            <Logo className="h-5 w-5" />
           </div>
           <span className="text-lg font-bold">StackSerp</span>
         </Link>
