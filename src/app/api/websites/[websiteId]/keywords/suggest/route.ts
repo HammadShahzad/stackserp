@@ -4,6 +4,8 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateJSON } from "@/lib/ai/gemini";
 
+export const maxDuration = 60; // 60s max duration for Gemini generation
+
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ websiteId: string }> }
@@ -73,7 +75,8 @@ Return JSON:
 
     return NextResponse.json({ suggestions: filtered });
   } catch (error) {
-    console.error("Keyword suggest error:", error);
-    return NextResponse.json({ error: "Failed to generate suggestions" }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Keyword suggest error:", msg);
+    return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
