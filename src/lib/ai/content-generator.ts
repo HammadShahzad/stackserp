@@ -68,7 +68,7 @@ const STEPS = [
 ] as const;
 
 function buildSystemPrompt(ctx: WebsiteContext): string {
-  return `You are a senior content writer for ${ctx.brandName} (${ctx.brandUrl}).
+  let prompt = `You are a senior content writer for ${ctx.brandName} (${ctx.brandUrl}).
 ${ctx.brandName} is a ${ctx.description}.
 Your target audience is: ${ctx.targetAudience}
 Writing tone: ${ctx.tone}
@@ -82,6 +82,16 @@ ${ctx.avoidTopics?.length ? `- Never mention: ${ctx.avoidTopics.join(", ")}` : "
 - Format: Markdown with proper H2/H3 hierarchy
 - Write for humans first, search engines second
 - Use active voice, short paragraphs, and clear language`;
+
+  if (ctx.existingPosts?.length) {
+    prompt += `\n- Link to existing content where relevant:\n${ctx.existingPosts.map((p) => `  • "${p.title}" → ${p.url}`).join("\n")}`;
+  }
+
+  if (ctx.internalLinks?.length) {
+    prompt += `\n- Use these anchor text → URL mappings naturally in the content:\n${ctx.internalLinks.map((l) => `  • "${l.keyword}" → ${l.url}`).join("\n")}`;
+  }
+
+  return prompt;
 }
 
 function slugify(text: string): string {
@@ -106,6 +116,8 @@ export async function generateBlogPost(
     includeFAQ?: boolean;
     includeTableOfContents?: boolean;
     onProgress?: ProgressCallback;
+    existingPosts?: { title: string; slug: string; url: string; focusKeyword: string }[];
+    internalLinks?: { keyword: string; url: string }[];
   } = {}
 ): Promise<GeneratedPost> {
   const { includeImages = true, includeFAQ = true, includeTableOfContents = true, onProgress } = options;
@@ -118,8 +130,11 @@ export async function generateBlogPost(
     targetAudience: website.targetAudience,
     tone: website.tone,
     description: website.description,
+    existingPosts: options.existingPosts,
+    internalLinks: options.internalLinks,
     ctaText: website.blogSettings?.ctaText ?? undefined,
     ctaUrl: website.blogSettings?.ctaUrl ?? undefined,
+    avoidTopics: website.blogSettings?.avoidTopics ?? undefined,
   };
 
   const wordTargets = {
@@ -225,6 +240,18 @@ ${draft}`,
 
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
   await progress("seo", "Optimizing for SEO — keywords, links, structure...");
+
+  let linkInstructions: string;
+  if (ctx.internalLinks?.length || ctx.existingPosts?.length) {
+    const mappings = [
+      ...(ctx.internalLinks || []).map((l) => `"${l.keyword}" → ${l.url}`),
+      ...(ctx.existingPosts || []).map((p) => `"${p.focusKeyword || p.title}" → ${p.url}`),
+    ];
+    linkInstructions = `6. Insert 3-8 internal links using these anchor text → URL mappings. Use markdown link syntax [anchor text](URL). Only use links that fit naturally:\n${mappings.map((m) => `   - ${m}`).join("\n")}`;
+  } else {
+    linkInstructions = "6. Add [INTERNAL_LINK: relevant anchor text] placeholders where internal links would help (3-5 places)";
+  }
+
   const seoOptimized = await generateText(
     `SEO-optimize this article for the focus keyword: "${keyword}"
 
@@ -234,7 +261,7 @@ Tasks:
 3. Ensure proper H2 → H3 hierarchy
 4. Make sure the intro (first 150 words) hooks the reader and includes the keyword
 5. Ensure every paragraph is 2-4 sentences max (readability)
-6. Add [INTERNAL_LINK: relevant anchor text] placeholders where internal links would help (3-5 places)
+${linkInstructions}
 7. Keep the article length at ${targetWords} words
 
 Do NOT change the overall structure or add new sections.
@@ -245,6 +272,21 @@ ${toneRewritten}`,
     systemPrompt,
     { temperature: 0.4 }
   );
+
+  // Post-process: replace leftover [INTERNAL_LINK: ...] placeholders with real links
+  let finalContent = seoOptimized;
+  if (ctx.internalLinks?.length) {
+    finalContent = finalContent.replace(
+      /\[INTERNAL_LINK:\s*([^\]]+)\]/gi,
+      (_, anchor: string) => {
+        const trimmed = anchor.trim().toLowerCase();
+        const match = ctx.internalLinks!.find(
+          (l) => trimmed.includes(l.keyword.toLowerCase()) || l.keyword.toLowerCase().includes(trimmed)
+        );
+        return match ? `[${anchor.trim()}](${match.url})` : anchor.trim();
+      }
+    );
+  }
 
   // ─── STEP 6: METADATA ────────────────────────────────────────────
   await progress("metadata", "Generating SEO metadata, schema, and social captions...");
@@ -321,13 +363,13 @@ Return only the image prompt, nothing else.`,
   }
 
   // ─── FINAL: ASSEMBLE ─────────────────────────────────────────────
-  const wordCount = countWords(seoOptimized);
+  const wordCount = countWords(finalContent);
   const readingTime = Math.ceil(wordCount / 200);
 
   return {
     title: outline.title,
     slug: metadata.slug || slugify(outline.title),
-    content: seoOptimized,
+    content: finalContent,
     excerpt: metadata.excerpt || "",
     metaTitle: metadata.metaTitle || outline.title,
     metaDescription: metadata.metaDescription || "",

@@ -59,13 +59,32 @@ export async function processJob(jobId: string): Promise<void> {
   const input = job.input as unknown as JobInput;
 
   try {
-    // Fetch website with blog settings
-    const website = await prisma.website.findUnique({
-      where: { id: input.websiteId },
-      include: { blogSettings: true },
-    });
+    // Fetch website with blog settings, existing posts, and internal links
+    const [website, existingPosts, internalLinks] = await Promise.all([
+      prisma.website.findUnique({
+        where: { id: input.websiteId },
+        include: { blogSettings: true },
+      }),
+      prisma.blogPost.findMany({
+        where: { websiteId: input.websiteId, status: "PUBLISHED" },
+        select: { title: true, slug: true, focusKeyword: true },
+        orderBy: { publishedAt: "desc" },
+        take: 50,
+      }),
+      prisma.internalLinkPair.findMany({
+        where: { websiteId: input.websiteId },
+        select: { keyword: true, url: true },
+      }),
+    ]);
 
     if (!website) throw new Error("Website not found");
+
+    const postLinks = existingPosts.map((p) => ({
+      title: p.title,
+      slug: p.slug,
+      url: `${website.brandUrl.replace(/\/$/, "")}/blog/${p.slug}`,
+      focusKeyword: p.focusKeyword || "",
+    }));
 
     const onProgress: ProgressCallback = async (progress) => {
       await prisma.generationJob.update({
@@ -76,7 +95,6 @@ export async function processJob(jobId: string): Promise<void> {
         },
       });
 
-      // Update keyword status
       if (progress.step === "draft" || progress.step === "tone") {
         await prisma.blogKeyword.update({
           where: { id: input.keywordId },
@@ -85,7 +103,7 @@ export async function processJob(jobId: string): Promise<void> {
       }
     };
 
-    // Run the full AI pipeline
+    // Run the full AI pipeline with all context from the strategy
     const generated = await generateBlogPost(
       input.keyword,
       website as Parameters<typeof generateBlogPost>[1],
@@ -94,6 +112,8 @@ export async function processJob(jobId: string): Promise<void> {
         includeImages: input.includeImages ?? true,
         includeFAQ: input.includeFAQ ?? true,
         onProgress,
+        existingPosts: postLinks,
+        internalLinks: internalLinks.map((l) => ({ keyword: l.keyword, url: l.url })),
       }
     );
 
