@@ -21,6 +21,30 @@ async function send(to: string, subject: string, html: string) {
 
 // ─── Email templates ──────────────────────────────────────────
 
+export async function sendPasswordResetEmail(to: string, resetUrl: string) {
+  const html = `
+    <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111">
+      <div style="background:#4F46E5;padding:24px 32px;border-radius:8px 8px 0 0">
+        <h1 style="color:white;margin:0;font-size:20px">⚡ StackSerp</h1>
+      </div>
+      <div style="padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+        <h2 style="margin:0 0 16px">Reset Your Password</h2>
+        <p style="color:#4b5563;margin:0 0 24px;line-height:1.5">You recently requested to reset your password for your StackSerp account. Click the button below to proceed.</p>
+
+        <a href="${resetUrl}" style="display:inline-block;background:#4F46E5;color:white;padding:12px 24px;border-radius:6px;text-decoration:none;font-weight:600;margin-bottom:24px">
+          Reset Password
+        </a>
+
+        <p style="color:#6b7280;margin:0 0 8px;font-size:14px">If you did not request a password reset, please ignore this email. This link will expire in 1 hour.</p>
+        <p style="color:#6b7280;margin:0;font-size:14px">If the button doesn't work, copy and paste this URL into your browser:</p>
+        <p style="color:#4F46E5;margin:8px 0 0;font-size:13px;word-break:break-all">${resetUrl}</p>
+      </div>
+    </div>
+  `;
+
+  await send(to, "Reset your StackSerp password", html);
+}
+
 export async function sendPostGeneratedEmail(opts: {
   to: string;
   userName: string;
