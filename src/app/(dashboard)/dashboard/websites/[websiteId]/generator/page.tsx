@@ -72,6 +72,7 @@ interface JobStatus {
   currentStep: string | null;
   progress: number;
   error: string | null;
+  input?: { keyword?: string } | null;
   blogPost?: { id: string; title: string; slug: string; websiteId: string } | null;
 }
 
@@ -83,7 +84,7 @@ export default function GeneratorPage() {
   const [keywords, setKeywords] = useState<Keyword[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
-  const [activeJob, setActiveJob] = useState<JobStatus | null>(null);
+  const [activeJobs, setActiveJobs] = useState<JobStatus[]>([]);
   const [selectedKeywordId, setSelectedKeywordId] = useState<string>("");
   const [contentLength, setContentLength] = useState("MEDIUM");
   const [includeImages, setIncludeImages] = useState(true);
@@ -105,24 +106,12 @@ export default function GeneratorPage() {
     }
   };
 
-  const fetchActiveJob = async () => {
+  const fetchJobs = async () => {
     try {
       const res = await fetch(`/api/websites/${websiteId}/jobs`);
       if (!res.ok) return;
-      const jobs = await res.json();
-      const running = jobs.find(
-        (j: { status: string }) => j.status === "QUEUED" || j.status === "PROCESSING"
-      );
-      if (running) {
-        setActiveJob({
-          id: running.id,
-          status: running.status,
-          currentStep: running.currentStep,
-          progress: running.progress,
-          error: running.error,
-        });
-        pollJob(running.id);
-      }
+      const jobs: JobStatus[] = await res.json();
+      setActiveJobs(jobs);
     } catch {
       // silent
     }
@@ -130,36 +119,53 @@ export default function GeneratorPage() {
 
   useEffect(() => {
     fetchKeywords();
-    fetchActiveJob();
+    fetchJobs();
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [websiteId]);
 
-  const pollJob = (jobId: string) => {
-    if (pollRef.current) clearInterval(pollRef.current);
+  // Poll while there are active jobs
+  useEffect(() => {
+    const hasActive = activeJobs.some(j => j.status === "QUEUED" || j.status === "PROCESSING");
 
-    pollRef.current = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`);
-        if (!res.ok) return;
-        const job: JobStatus = await res.json();
-        setActiveJob(job);
+    if (hasActive && !pollRef.current) {
+      pollRef.current = setInterval(async () => {
+        await fetchJobs();
+      }, 3000);
+    }
 
-        if (job.status === "COMPLETED" || job.status === "FAILED") {
-          clearInterval(pollRef.current!);
-          pollRef.current = null;
+    if (!hasActive && pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
 
-          if (job.status === "COMPLETED") {
-            toast.success("Blog post generated successfully!");
-            fetchKeywords(); // Refresh queue
-          } else {
-            toast.error(`Generation failed: ${job.error}`);
-          }
-        }
-      } catch {
-        clearInterval(pollRef.current!);
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
       }
-    }, 2000); // Poll every 2 seconds
-  };
+    };
+  }, [activeJobs]);
+
+  // Notify on newly completed/failed jobs
+  const prevJobsRef = useRef<Map<string, string>>(new Map());
+  useEffect(() => {
+    for (const job of activeJobs) {
+      const prev = prevJobsRef.current.get(job.id);
+      if (prev && prev !== job.status) {
+        if (job.status === "COMPLETED") {
+          toast.success("Blog post generated successfully!");
+          fetchKeywords();
+        } else if (job.status === "FAILED") {
+          toast.error(`Generation failed: ${job.error}`);
+        }
+      }
+    }
+    const newMap = new Map<string, string>();
+    for (const job of activeJobs) {
+      newMap.set(job.id, job.status);
+    }
+    prevJobsRef.current = newMap;
+  }, [activeJobs]);
 
   const handleGenerate = async () => {
     setIsStarting(true);
@@ -184,8 +190,7 @@ export default function GeneratorPage() {
       }
 
       toast.success(`Generating "${data.keyword}"...`);
-      setActiveJob({ id: data.jobId, status: "QUEUED", currentStep: null, progress: 0, error: null });
-      pollJob(data.jobId);
+      await fetchJobs();
     } catch {
       toast.error("Failed to start generation");
     } finally {
@@ -193,9 +198,11 @@ export default function GeneratorPage() {
     }
   };
 
-  const isRunning = activeJob?.status === "QUEUED" || activeJob?.status === "PROCESSING";
-  const isCompleted = activeJob?.status === "COMPLETED";
-  const isFailed = activeJob?.status === "FAILED";
+  const runningJobs = activeJobs.filter(j => j.status === "QUEUED" || j.status === "PROCESSING");
+  const completedJobs = activeJobs.filter(j => j.status === "COMPLETED");
+  const failedJobs = activeJobs.filter(j => j.status === "FAILED");
+  const hasRunning = runningJobs.length > 0;
+
   const nextKeyword = selectedKeywordId
     ? keywords.find((k) => k.id === selectedKeywordId)
     : keywords[0];
@@ -218,82 +225,46 @@ export default function GeneratorPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column - Generation Controls */}
-        <div className="lg:col-span-2 space-y-6">
+        {/* Left Column */}
+        <div className="lg:col-span-2 space-y-4">
 
-          {/* Active Job / Pipeline Progress */}
-          {activeJob && (
-            <Card className={
-              isCompleted ? "border-green-200 bg-green-50" :
-              isFailed ? "border-red-200 bg-red-50" :
-              "border-primary/20 bg-primary/5"
-            }>
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    {isRunning && <Loader2 className="h-4 w-4 animate-spin text-primary" />}
-                    {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-600" />}
-                    {isFailed && <XCircle className="h-4 w-4 text-red-600" />}
-                    {isRunning ? "Generating..." : isCompleted ? "Generation Complete" : "Generation Failed"}
-                  </CardTitle>
-                  <span className="text-sm font-medium">{activeJob.progress}%</span>
-                </div>
-                <Progress value={activeJob.progress} className="h-2" />
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {PIPELINE_STEPS.map((step) => {
-                    const stepIdx = PIPELINE_STEPS.findIndex(s => s.id === step.id);
-                    const currentIdx = PIPELINE_STEPS.findIndex(s => s.id === activeJob.currentStep);
-                    const isDone = isCompleted || (currentIdx > stepIdx);
-                    const isCurrent = activeJob.currentStep === step.id;
+          {/* All Active Jobs */}
+          {runningJobs.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {runningJobs.length} active job{runningJobs.length > 1 ? "s" : ""}
+              </h3>
+              {runningJobs.map(job => (
+                <JobCard key={job.id} job={job} websiteId={websiteId} />
+              ))}
+            </div>
+          )}
 
-                    return (
-                      <div
-                        key={step.id}
-                        className={`flex items-center gap-1.5 p-2 rounded text-xs ${
-                          isDone ? "text-green-700" :
-                          isCurrent ? "text-primary font-medium" :
-                          "text-muted-foreground"
-                        }`}
-                      >
-                        {isDone ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-600" />
-                        ) : isCurrent ? (
-                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                        ) : (
-                          <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/30 shrink-0" />
-                        )}
-                        <span>{step.name}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+          {/* Completed Jobs */}
+          {completedJobs.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-green-600 flex items-center gap-2">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {completedJobs.length} completed
+              </h3>
+              {completedJobs.map(job => (
+                <JobCard key={job.id} job={job} websiteId={websiteId} />
+              ))}
+            </div>
+          )}
 
-                {isFailed && (
-                  <p className="text-sm text-red-700 mt-3 p-2 bg-red-100 rounded">
-                    {activeJob.error}
-                  </p>
-                )}
-
-                {isCompleted && activeJob.blogPost && (
-                  <div className="flex items-center justify-between mt-3 p-3 bg-green-100 rounded-lg">
-                    <div>
-                      <p className="font-medium text-green-900 text-sm">
-                        {activeJob.blogPost.title}
-                      </p>
-                      <p className="text-xs text-green-700">Ready to review</p>
-                    </div>
-                    <Button asChild size="sm" variant="outline" className="border-green-300">
-                      <Link href={`/dashboard/websites/${websiteId}/posts/${activeJob.blogPost.id}`}>
-                        Edit Post
-                        <ExternalLink className="ml-1.5 h-3 w-3" />
-                      </Link>
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+          {/* Failed Jobs */}
+          {failedJobs.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-medium text-red-600 flex items-center gap-2">
+                <XCircle className="h-3.5 w-3.5" />
+                {failedJobs.length} failed
+              </h3>
+              {failedJobs.map(job => (
+                <JobCard key={job.id} job={job} websiteId={websiteId} />
+              ))}
+            </div>
           )}
 
           {/* Queue Card */}
@@ -361,12 +332,12 @@ export default function GeneratorPage() {
                     className="w-full"
                     size="lg"
                     onClick={handleGenerate}
-                    disabled={isRunning || isStarting}
+                    disabled={isStarting}
                   >
-                    {isStarting || isRunning ? (
+                    {isStarting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        {isStarting ? "Starting..." : "Generating..."}
+                        Starting...
                       </>
                     ) : (
                       <>
@@ -375,20 +346,6 @@ export default function GeneratorPage() {
                       </>
                     )}
                   </Button>
-
-                  {(isCompleted || isFailed) && (
-                    <Button
-                      variant="outline"
-                      className="w-full"
-                      onClick={() => {
-                        setActiveJob(null);
-                        fetchKeywords();
-                      }}
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Generate Next Keyword
-                    </Button>
-                  )}
                 </div>
               )}
             </CardContent>
@@ -404,7 +361,7 @@ export default function GeneratorPage() {
             <CardContent className="space-y-5">
               <div className="space-y-2">
                 <Label>Content Length</Label>
-                <Select value={contentLength} onValueChange={setContentLength} disabled={isRunning}>
+                <Select value={contentLength} onValueChange={setContentLength}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -420,43 +377,25 @@ export default function GeneratorPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Include AI Image</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Imagen 4.0 featured image
-                  </p>
+                  <p className="text-xs text-muted-foreground">Imagen 4.0 featured image</p>
                 </div>
-                <Switch
-                  checked={includeImages}
-                  onCheckedChange={setIncludeImages}
-                  disabled={isRunning}
-                />
+                <Switch checked={includeImages} onCheckedChange={setIncludeImages} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Include FAQ Section</Label>
-                  <p className="text-xs text-muted-foreground">
-                    4-5 Q&A pairs
-                  </p>
+                  <p className="text-xs text-muted-foreground">4-5 Q&A pairs</p>
                 </div>
-                <Switch
-                  checked={includeFAQ}
-                  onCheckedChange={setIncludeFAQ}
-                  disabled={isRunning}
-                />
+                <Switch checked={includeFAQ} onCheckedChange={setIncludeFAQ} />
               </div>
 
               <div className="flex items-center justify-between">
                 <div>
                   <Label>Auto-Publish</Label>
-                  <p className="text-xs text-muted-foreground">
-                    Publish immediately on complete
-                  </p>
+                  <p className="text-xs text-muted-foreground">Publish immediately on complete</p>
                 </div>
-                <Switch
-                  checked={autoPublish}
-                  onCheckedChange={setAutoPublish}
-                  disabled={isRunning}
-                />
+                <Switch checked={autoPublish} onCheckedChange={setAutoPublish} />
               </div>
             </CardContent>
           </Card>
@@ -467,9 +406,9 @@ export default function GeneratorPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {[
-                { label: "Research", model: "Perplexity Sonar Pro", configured: !!process.env.NEXT_PUBLIC_HAS_PERPLEXITY },
-                { label: "Writing", model: "Gemini 3.1 Pro", configured: true },
-                { label: "Images", model: "Imagen 4.0", configured: true },
+                { label: "Research", model: "Perplexity Sonar Pro" },
+                { label: "Writing", model: "Gemini 3.1 Pro" },
+                { label: "Images", model: "Imagen 4.0" },
               ].map((m) => (
                 <div key={m.label} className="flex items-center justify-between p-2.5 rounded-lg border">
                   <div>
@@ -491,5 +430,82 @@ export default function GeneratorPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+function JobCard({ job, websiteId }: { job: JobStatus; websiteId: string }) {
+  const isRunning = job.status === "QUEUED" || job.status === "PROCESSING";
+  const isCompleted = job.status === "COMPLETED";
+  const isFailed = job.status === "FAILED";
+  const keyword = (job.input as { keyword?: string })?.keyword || "Unknown keyword";
+
+  return (
+    <Card className={
+      isCompleted ? "border-green-200 bg-green-50/50" :
+      isFailed ? "border-red-200 bg-red-50/50" :
+      "border-primary/20 bg-primary/5"
+    }>
+      <CardContent className="pt-4 pb-4 space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            {isRunning && <Loader2 className="h-4 w-4 animate-spin text-primary shrink-0" />}
+            {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0" />}
+            {isFailed && <XCircle className="h-4 w-4 text-red-600 shrink-0" />}
+            <span className="text-sm font-medium truncate">{keyword}</span>
+          </div>
+          <span className="text-sm font-medium tabular-nums shrink-0 ml-2">{job.progress}%</span>
+        </div>
+
+        <Progress value={job.progress} className="h-1.5" />
+
+        <div className="grid grid-cols-4 gap-1 sm:grid-cols-7">
+          {PIPELINE_STEPS.map((step) => {
+            const stepIdx = PIPELINE_STEPS.findIndex(s => s.id === step.id);
+            const currentIdx = PIPELINE_STEPS.findIndex(s => s.id === job.currentStep);
+            const isDone = isCompleted || (currentIdx > stepIdx);
+            const isCurrent = job.currentStep === step.id;
+
+            return (
+              <div
+                key={step.id}
+                className={`flex items-center gap-1 text-[11px] ${
+                  isDone ? "text-green-700" :
+                  isCurrent ? "text-primary font-medium" :
+                  "text-muted-foreground/60"
+                }`}
+              >
+                {isDone ? (
+                  <CheckCircle2 className="h-3 w-3 shrink-0 text-green-600" />
+                ) : isCurrent ? (
+                  <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                ) : (
+                  <div className="h-3 w-3 rounded-full border border-muted-foreground/30 shrink-0" />
+                )}
+                <span className="hidden sm:inline">{step.name}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {isFailed && job.error && (
+          <p className="text-xs text-red-700 p-2 bg-red-100 rounded">
+            {job.error}
+          </p>
+        )}
+
+        {isCompleted && job.blogPost && (
+          <div className="flex items-center justify-between p-2 bg-green-100 rounded">
+            <p className="text-xs font-medium text-green-900 truncate mr-2">
+              {job.blogPost.title}
+            </p>
+            <Button asChild size="sm" variant="outline" className="border-green-300 h-7 text-xs shrink-0">
+              <Link href={`/dashboard/websites/${websiteId}/posts/${job.blogPost.id}`}>
+                Edit <ExternalLink className="ml-1 h-3 w-3" />
+              </Link>
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
