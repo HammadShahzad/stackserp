@@ -512,12 +512,9 @@ export default function LandingPage() {
                    ))}
                  </div>
                  <p className="text-lg mb-6 leading-relaxed">"{t.quote}"</p>
-                 <div className="flex items-center gap-3">
-                   <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-purple-500"></div>
-                   <div>
-                     <div className="font-bold">{t.author}</div>
-                     <div className="text-sm text-muted-foreground">{t.role}</div>
-                   </div>
+                 <div>
+                   <div className="font-bold">{t.author}</div>
+                   <div className="text-sm text-muted-foreground">{t.role}</div>
                  </div>
                </div>
              ))}
