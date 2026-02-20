@@ -97,7 +97,37 @@ ${ctx.ctaText && ctx.ctaUrl ? `- Include a call-to-action: "${ctx.ctaText}" link
 ${ctx.avoidTopics?.length ? `- Never mention: ${ctx.avoidTopics.join(", ")}` : ""}
 - Format: Markdown with proper H2/H3 hierarchy
 - Write for humans first, search engines second
-- Use active voice, short paragraphs, and clear language`;
+- Use active voice, short paragraphs, and clear language
+
+EEAT (Experience, Expertise, Authority, Trust) RULES:
+- Write from the perspective of an expert with 10+ years of hands-on experience
+- Use first-person experience phrases like "In my testing," "I've found that," "From my experience," "What I noticed," "After working with X for years"
+- Share specific observations and personal insights — not generic advice
+- Include practical "pro-tips" that only someone with real experience would know
+- Reference specific scenarios you've encountered and how you solved them
+
+BANNED AI PHRASES (NEVER USE):
+- "Delve" or "delve into"
+- "Dive deep" or "deep dive"
+- "In today's fast-paced world" or "In today's digital landscape"
+- "Buckle up"
+- "Game-changer" or "game changing"
+- "Leverage" (use "use" instead)
+- "Utilize" (use "use" instead)
+- "Tapestry"
+- "Landscape" (when used metaphorically)
+- "Realm"
+- "Robust"
+- "Cutting-edge" or "state-of-the-art"
+- "Embark on a journey"
+- "Navigating the complexities"
+- "Unlock the power/potential"
+- "It's important to note that" or "It's worth noting"
+- Em-dash (—) — use commas or periods instead
+- Do NOT start sentences with "So," or "Well,"
+- Avoid overly formal transitions like "Furthermore," "Moreover," "Additionally"`;
+
+
 
   if (ctx.existingPosts?.length) {
     prompt += `\n- Link to existing content where relevant:\n${ctx.existingPosts.map((p) => `  • "${p.title}" → ${p.url}`).join("\n")}`;
@@ -246,6 +276,10 @@ ${research.rawResearch.substring(0, 4000)}
 12. Make it SEO-friendly by naturally incorporating the keyword and related terms
 13. Cover everything competitors cover PLUS the content gaps identified in research
 ${includeFAQ ? "14. Include a FAQ section near the end with 4-5 common questions and detailed answers" : ""}
+15. Write from an EXPERT PERSPECTIVE — use phrases like "In my testing," "I've found that," "From my experience," "What I noticed is" to share first-hand insights
+16. Add 2-3 "Pro Tip:" callouts per section that share insider knowledge only an expert would know
+17. NEVER use these AI phrases: "delve," "dive deep," "in today's fast-paced world," "game-changer," "leverage," "utilize," "tapestry," "landscape" (metaphorically), "realm," "robust," "cutting-edge," "embark on a journey," "navigating the complexities," "unlock the power"
+18. NEVER use em-dash (—). Use commas, periods, or semicolons instead
 
 Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the introduction paragraph.`,
     systemPrompt,
@@ -255,7 +289,7 @@ Output ONLY the blog post content in Markdown. Do not include the title as an H1
   // ─── STEP 4: TONE REWRITE ────────────────────────────────────────
   await progress("tone", "Refining brand voice and tone...");
   const toneRewritten = await generateText(
-    `You are a witty, self-aware writer who combines humor with genuinely insightful content. Think of a cheeky uncle who is also a thoughtful mentor — you make even dry topics feel like a standup set with useful takeaways.
+    `You are a witty, self-aware writer who combines humor with genuinely insightful content. Think of a cheeky uncle who is also a thoughtful mentor. You make even dry topics feel like a standup set with useful takeaways.
 
 Rewrite the following blog post for ${ctx.brandName} to be more engaging, conversational, and fun to read. The brand voice is: "${ctx.tone}". Keep ALL the factual information, data, and structure intact. Just improve the tone:
 
@@ -263,11 +297,16 @@ Rewrite the following blog post for ${ctx.brandName} to be more engaging, conver
 - Use relatable analogies that ${ctx.targetAudience} would appreciate
 - Make transitions smooth and natural
 - Keep it professional enough for a business audience
-- Don't overdo it — 80% informative, 20% entertaining
-- The content should feel natural, engaging, and authentic — not like generic AI writing
+- Don't overdo it: 80% informative, 20% entertaining
+- The content should feel natural, engaging, and authentic, not like generic AI writing
 - Ensure the keyword "${keyword}" appears naturally in the first 100 words
-- Do NOT add any new sections — only refine the existing content
+- Do NOT add any new sections, only refine the existing content
 - Maintain all Markdown formatting, headings, lists, and tables
+- CRITICAL: Write from a FIRST-PERSON expert perspective. Use "I've found," "In my testing," "From my experience," "What I noticed" throughout. The reader should feel like they're getting advice from a real expert, not a robot.
+- NEVER use these banned AI words/phrases: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "landscape" (metaphorical), "realm," "robust," "cutting-edge," "embark on a journey," "navigating the complexities," "unlock the power/potential," "it's important to note," "in today's fast-paced world"
+- NEVER use the em-dash character. Use commas or periods instead.
+- AVOID starting sentences with "So," or "Well,"
+- AVOID formal transitions like "Furthermore," "Moreover," "Additionally" - use natural ones instead
 
 ## Blog Post:
 ${draft}
@@ -303,12 +342,15 @@ Output ONLY the rewritten blog post in Markdown format. Preserve all headings an
 3. Add related/LSI keywords naturally (synonyms, related terms people search for)
 4. Ensure proper heading hierarchy (H2, H3) — no heading level skips
 5. Add internal links using REAL markdown links to these pages where relevant:${internalLinkBlock}${keywordUrlBlock}
-   Link to 3-6 internal pages where naturally relevant. Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real URLs only.
+   Link to 15-20 internal pages where naturally relevant. Spread links throughout the entire article, not just in one section. Use descriptive anchor text (not "click here"). Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real URLs only.
 6. Make sure the intro paragraph contains the keyword
 ${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common questions (format as proper ## FAQ heading with ### for each question — this helps with Google's FAQ rich snippets)` : "7. Skip FAQ if not present"}
 8. Ensure paragraphs are scannable (3-4 sentences max)
 9. DO NOT stuff keywords — keep it natural
-10. Preserve the humor and conversational tone — do not make it robotic
+10. Preserve the humor and conversational tone, do not make it robotic
+11a. REMOVE any remaining AI phrases: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "realm," "robust," "cutting-edge," "embark," "navigate the complexities," "unlock the power"
+11b. REMOVE all em-dash characters (—) and replace with commas or periods
+11c. Ensure first-person expert voice is present: "In my testing," "I've found," "From my experience"
 11. If there's a table of contents, ensure it matches the actual headings
 12. Keep the article length at ${targetWords} words
 
@@ -414,7 +456,8 @@ Output ONLY the detailed image prompt (2-3 sentences), nothing else.`,
       featuredImageUrl = await generateBlogImage(
         imagePrompt,
         `${metadata.slug || slugify(outline.title)}-featured`,
-        website.id
+        website.id,
+        outline.title
       );
     } catch (err) {
       console.error("Image generation failed:", err);

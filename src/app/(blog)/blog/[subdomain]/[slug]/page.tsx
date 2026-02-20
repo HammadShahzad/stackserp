@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Calendar, Clock, User, ArrowLeft, Tag, Share2 } from "lucide-react";
+import { Calendar, Clock, User, ArrowLeft, Tag, Share2, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
@@ -10,6 +10,25 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 
 interface Props {
   params: Promise<{ subdomain: string; slug: string }>;
+}
+
+function extractFAQs(content: string): { question: string; answer: string }[] {
+  const faqs: { question: string; answer: string }[] = [];
+  const faqSectionMatch = content.match(/##\s*(?:FAQ|Frequently Asked Questions)[^\n]*\n([\s\S]*?)(?=\n##\s[^#]|\n---|\Z)/i);
+  if (!faqSectionMatch) return faqs;
+
+  const faqContent = faqSectionMatch[1];
+  const questionBlocks = faqContent.split(/###\s+/).filter(Boolean);
+
+  for (const block of questionBlocks) {
+    const lines = block.trim().split("\n");
+    const question = lines[0]?.replace(/\*\*/g, "").replace(/\??\s*$/, "?").trim();
+    const answer = lines.slice(1).join(" ").replace(/[#*_`]/g, "").trim();
+    if (question && answer && answer.length > 10) {
+      faqs.push({ question, answer: answer.substring(0, 500) });
+    }
+  }
+  return faqs.slice(0, 8);
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -91,35 +110,72 @@ export default async function PublicBlogPostPage({ params }: Props) {
 
   const post = await prisma.blogPost.findUnique({
     where: { websiteId_slug: { websiteId: website.id, slug } },
+    include: { keyword: { select: { parentCluster: true } } },
   });
 
   if (!post || post.status !== "PUBLISHED") notFound();
 
-  // Increment views (non-blocking)
   prisma.blogPost
     .update({ where: { id: post.id }, data: { views: { increment: 1 } } })
     .catch(() => {});
 
-  const related = await prisma.blogPost.findMany({
+  const clusterName = post.keyword?.parentCluster;
+
+  const relatedSelect = {
+    id: true,
+    title: true,
+    slug: true,
+    excerpt: true,
+    featuredImage: true,
+    featuredImageAlt: true,
+    readingTime: true,
+    publishedAt: true,
+    category: true,
+  } as const;
+
+  // Prioritize: same cluster > same category > recent
+  let related = await prisma.blogPost.findMany({
     where: {
       websiteId: website.id,
       status: "PUBLISHED",
       id: { not: post.id },
+      ...(clusterName ? { keyword: { parentCluster: clusterName } } : {}),
     },
     orderBy: { publishedAt: "desc" },
-    take: 3,
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      excerpt: true,
-      featuredImage: true,
-      featuredImageAlt: true,
-      readingTime: true,
-      publishedAt: true,
-      category: true,
-    },
+    take: 9,
+    select: relatedSelect,
   });
+
+  if (related.length < 9) {
+    const existingIds = [post.id, ...related.map(r => r.id)];
+    const moreRelated = await prisma.blogPost.findMany({
+      where: {
+        websiteId: website.id,
+        status: "PUBLISHED",
+        id: { notIn: existingIds },
+        ...(post.category ? { category: post.category } : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+      take: 9 - related.length,
+      select: relatedSelect,
+    });
+    related = [...related, ...moreRelated];
+  }
+
+  if (related.length < 9) {
+    const existingIds = [post.id, ...related.map(r => r.id)];
+    const moreRecent = await prisma.blogPost.findMany({
+      where: {
+        websiteId: website.id,
+        status: "PUBLISHED",
+        id: { notIn: existingIds },
+      },
+      orderBy: { publishedAt: "desc" },
+      take: 9 - related.length,
+      select: relatedSelect,
+    });
+    related = [...related, ...moreRecent];
+  }
 
   const brandColor = website.primaryColor || "#4F46E5";
   const readingTime = post.readingTime || Math.max(1, Math.ceil((post.content?.split(/\s+/).length || 0) / 200));
@@ -136,6 +192,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
     )
     .trim();
 
+  // --- JSON-LD: Article Schema ---
   const articleJsonLd = {
     "@context": "https://schema.org",
     "@type": "Article",
@@ -170,6 +227,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
     articleSection: post.category || website.niche,
   };
 
+  // --- JSON-LD: BreadcrumbList Schema ---
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -179,6 +237,34 @@ export default async function PublicBlogPostPage({ params }: Props) {
       { "@type": "ListItem", position: 3, name: post.title, item: postUrl },
     ],
   };
+
+  // --- JSON-LD: Organization Schema ---
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: website.brandName,
+    url: website.brandUrl,
+    ...(website.logoUrl && {
+      logo: { "@type": "ImageObject", url: website.logoUrl },
+    }),
+    ...(website.faviconUrl && { image: website.faviconUrl }),
+    description: website.description,
+  };
+
+  // --- JSON-LD: FAQPage Schema (extract from content) ---
+  const faqs = extractFAQs(cleanContent);
+  const faqJsonLd = faqs.length > 0 ? {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqs.map(faq => ({
+      "@type": "Question",
+      name: faq.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: faq.answer,
+      },
+    })),
+  } : null;
 
   return (
     <div className="min-h-screen bg-white">
@@ -190,6 +276,16 @@ export default async function PublicBlogPostPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      {faqJsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+        />
+      )}
 
       {/* Sticky Header */}
       <nav className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
@@ -212,8 +308,29 @@ export default async function PublicBlogPostPage({ params }: Props) {
         </div>
       </nav>
 
+      {/* Visual Breadcrumbs */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <a href={website.brandUrl} target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+            {website.brandName}
+          </a>
+          <ChevronRight className="h-3 w-3" />
+          <Link href={`/blog/${subdomain}`} className="hover:text-foreground transition-colors">
+            Blog
+          </Link>
+          {post.category && (
+            <>
+              <ChevronRight className="h-3 w-3" />
+              <span className="text-muted-foreground">{post.category}</span>
+            </>
+          )}
+          <ChevronRight className="h-3 w-3" />
+          <span className="text-foreground font-medium truncate max-w-[200px]">{post.title}</span>
+        </nav>
+      </div>
+
       {/* Article */}
-      <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <article className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Category */}
         {post.category && (
           <span
@@ -224,7 +341,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
           </span>
         )}
 
-        {/* Title */}
+        {/* Title (single H1) */}
         <h1 className="text-3xl md:text-4xl lg:text-5xl font-bold text-foreground mt-4 mb-4 leading-tight tracking-tight">
           {post.title}
         </h1>
@@ -245,11 +362,13 @@ export default async function PublicBlogPostPage({ params }: Props) {
           {post.publishedAt && (
             <span className="flex items-center gap-1.5">
               <Calendar className="h-4 w-4" />
-              {new Date(post.publishedAt).toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              })}
+              <time dateTime={post.publishedAt.toISOString()}>
+                {new Date(post.publishedAt).toLocaleDateString("en-US", {
+                  month: "long",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </time>
             </span>
           )}
           <span className="flex items-center gap-1.5">
@@ -260,16 +379,26 @@ export default async function PublicBlogPostPage({ params }: Props) {
 
         {/* Featured Image */}
         {post.featuredImage && (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={post.featuredImage}
-            alt={post.featuredImageAlt || post.title}
-            className="w-full rounded-2xl object-cover max-h-[500px] mb-10"
-          />
+          <figure className="mb-10">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={post.featuredImage}
+              alt={post.featuredImageAlt || post.title}
+              className="w-full rounded-2xl object-cover max-h-[500px]"
+              loading="eager"
+              width={1200}
+              height={630}
+            />
+            {post.featuredImageAlt && (
+              <figcaption className="text-center text-xs text-muted-foreground mt-2">
+                {post.featuredImageAlt}
+              </figcaption>
+            )}
+          </figure>
         )}
 
-        {/* Content - proper markdown rendering */}
-        <div className="prose prose-slate prose-lg max-w-none prose-headings:tracking-tight prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-img:rounded-xl prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-blockquote:border-l-primary/30 prose-blockquote:text-muted-foreground [&_table]:block [&_table]:overflow-x-auto [&_table]:whitespace-nowrap sm:[&_table]:table sm:[&_table]:whitespace-normal [&_th]:bg-slate-100 [&_th]:border [&_th]:border-slate-300 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-sm [&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_table]:border-collapse [&_table]:w-full [&_table]:text-base sm:[&_th]:px-4 sm:[&_td]:px-4 sm:[&_th]:text-base sm:[&_td]:text-base">
+        {/* Content */}
+        <section className="prose prose-slate prose-lg max-w-none prose-headings:tracking-tight prose-h1:text-3xl prose-h2:text-2xl prose-h3:text-xl prose-a:text-primary prose-a:no-underline hover:prose-a:underline prose-img:rounded-xl prose-pre:bg-slate-900 prose-pre:text-slate-100 prose-blockquote:border-l-primary/30 prose-blockquote:text-muted-foreground [&_table]:block [&_table]:overflow-x-auto [&_table]:whitespace-nowrap sm:[&_table]:table sm:[&_table]:whitespace-normal [&_th]:bg-slate-100 [&_th]:border [&_th]:border-slate-300 [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-semibold [&_th]:text-sm [&_td]:border [&_td]:border-slate-200 [&_td]:px-3 [&_td]:py-2 [&_td]:text-sm [&_table]:border-collapse [&_table]:w-full [&_table]:text-base sm:[&_th]:px-4 sm:[&_td]:px-4 sm:[&_th]:text-base sm:[&_td]:text-base">
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             rehypePlugins={[
@@ -286,7 +415,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
                     ...defaultSchema.attributes,
                     "*": [...(defaultSchema.attributes?.["*"] || []), "className", "class"],
                     a: [...(defaultSchema.attributes?.a || []), "href", "title", "target", "rel"],
-                    img: [...(defaultSchema.attributes?.img || []), "src", "alt", "title", "width", "height"],
+                    img: [...(defaultSchema.attributes?.img || []), "src", "alt", "title", "width", "height", "loading"],
                   },
                 },
               ],
@@ -295,11 +424,11 @@ export default async function PublicBlogPostPage({ params }: Props) {
           >
             {cleanContent}
           </ReactMarkdown>
-        </div>
+        </section>
 
         {/* Tags */}
         {tags.length > 0 && (
-          <div className="mt-12 pt-8 border-t flex items-center gap-2 flex-wrap">
+          <aside className="mt-12 pt-8 border-t flex items-center gap-2 flex-wrap">
             <Tag className="h-4 w-4 text-muted-foreground" />
             {tags.map((tag) => (
               <span
@@ -309,8 +438,50 @@ export default async function PublicBlogPostPage({ params }: Props) {
                 {tag}
               </span>
             ))}
-          </div>
+          </aside>
         )}
+
+        {/* Author Box (EEAT) */}
+        <aside className="mt-10 p-6 bg-slate-50 rounded-2xl border flex items-start gap-4">
+          {website.faviconUrl ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img
+              src={website.faviconUrl}
+              alt={website.brandName}
+              className="w-14 h-14 rounded-full object-cover border-2 border-white shadow-sm flex-shrink-0"
+            />
+          ) : (
+            <div
+              className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-bold flex-shrink-0"
+              style={{ backgroundColor: brandColor }}
+            >
+              {website.brandName.charAt(0)}
+            </div>
+          )}
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-foreground">{website.brandName}</p>
+            <p className="text-sm text-muted-foreground mt-1">
+              {website.description}
+            </p>
+            <div className="flex items-center gap-3 mt-3">
+              <a
+                href={website.brandUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sm font-medium hover:underline"
+                style={{ color: brandColor }}
+              >
+                Visit Website
+              </a>
+              <Link
+                href={`/blog/${subdomain}`}
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                More Articles
+              </Link>
+            </div>
+          </div>
+        </aside>
 
         {/* Share + CTA */}
         <div className="mt-10 pt-6 border-t flex items-center justify-between">
@@ -322,7 +493,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
             <a
               href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(post.title)}&url=${encodeURIComponent(postUrl)}`}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener noreferrer nofollow"
               className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors"
             >
               <Share2 className="h-3.5 w-3.5" /> Tweet
@@ -330,7 +501,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
             <a
               href={`https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(postUrl)}`}
               target="_blank"
-              rel="noopener noreferrer"
+              rel="noopener noreferrer nofollow"
               className="inline-flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border hover:bg-muted transition-colors"
             >
               <Share2 className="h-3.5 w-3.5" /> LinkedIn
@@ -359,9 +530,9 @@ export default async function PublicBlogPostPage({ params }: Props) {
         </div>
       </article>
 
-      {/* Related Posts */}
+      {/* Related Posts - 9 articles for maximum internal linking */}
       {related.length > 0 && (
-        <div className="border-t py-12">
+        <section className="border-t py-12">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
             <h2 className="text-xl font-bold mb-6">Related Articles</h2>
             <div className="grid gap-6 md:grid-cols-3">
@@ -377,6 +548,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
                       src={r.featuredImage}
                       alt={r.featuredImageAlt || r.title}
                       className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
                     />
                   )}
                   <div className="p-4">
@@ -398,7 +570,7 @@ export default async function PublicBlogPostPage({ params }: Props) {
               ))}
             </div>
           </div>
-        </div>
+        </section>
       )}
 
       {/* Footer */}

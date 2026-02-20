@@ -89,11 +89,43 @@ export default async function PublicBlogListPage({ params }: Props) {
     },
   };
 
+  const organizationJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    name: website.brandName,
+    url: website.brandUrl,
+    ...(website.logoUrl && {
+      logo: { "@type": "ImageObject", url: website.logoUrl },
+    }),
+    ...(website.faviconUrl && { image: website.faviconUrl }),
+    description: website.description,
+  };
+
+  const websiteJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: website.brandName,
+    url: website.brandUrl,
+    description: website.description,
+    publisher: {
+      "@type": "Organization",
+      name: website.brandName,
+    },
+  };
+
   return (
     <div className="min-h-screen bg-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }}
       />
 
       {/* Sticky Nav */}

@@ -110,12 +110,16 @@ export function calculateContentScore(input: ScoringInput): ScoreResult {
     add("Heading structure", 2, 8, "Needs more H2/H3 structure");
   }
 
-  // 9. Internal links (8 pts)
+  // 9. Internal links (8 pts) - target 15-20 per article
   const linkCount = (content.match(/\[.*?\]\(.*?\)/g) || []).length;
-  if (linkCount >= 3) {
-    add("Internal links", 8, 8, `${linkCount} links found`);
+  if (linkCount >= 15) {
+    add("Internal links", 8, 8, `${linkCount} links found (excellent)`);
+  } else if (linkCount >= 8) {
+    add("Internal links", 6, 8, `${linkCount} links found (target 15+)`);
+  } else if (linkCount >= 3) {
+    add("Internal links", 4, 8, `${linkCount} links found (target 15+)`);
   } else if (linkCount >= 1) {
-    add("Internal links", 4, 8, `${linkCount} link(s) — add more`);
+    add("Internal links", 2, 8, `${linkCount} link(s), add more internal links`);
   } else {
     add("Internal links", 0, 8, "No links found");
   }
