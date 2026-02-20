@@ -3,6 +3,46 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 
+async function verifyAccess(userId: string, websiteId: string) {
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId },
+    include: { organization: { include: { websites: true } } },
+  });
+  return membership?.organization.websites.find((w) => w.id === websiteId);
+}
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ websiteId: string }> }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const { websiteId } = await params;
+    const website = await verifyAccess(session.user.id, websiteId);
+    if (!website) {
+      return NextResponse.json({ error: "Website not found" }, { status: 404 });
+    }
+
+    const { ids } = await req.json();
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return NextResponse.json({ error: "Provide an array of keyword ids" }, { status: 400 });
+    }
+
+    const result = await prisma.blogKeyword.deleteMany({
+      where: { id: { in: ids }, websiteId },
+    });
+
+    return NextResponse.json({ deleted: result.count });
+  } catch (error) {
+    console.error("Error bulk deleting keywords:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ websiteId: string }> }
@@ -14,16 +54,7 @@ export async function POST(
     }
 
     const { websiteId } = await params;
-
-    // Verify access
-    const membership = await prisma.organizationMember.findFirst({
-      where: { userId: session.user.id },
-      include: { organization: { include: { websites: true } } },
-    });
-
-    const website = membership?.organization.websites.find(
-      (w) => w.id === websiteId
-    );
+    const website = await verifyAccess(session.user.id, websiteId);
     if (!website) {
       return NextResponse.json({ error: "Website not found" }, { status: 404 });
     }

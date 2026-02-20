@@ -125,6 +125,7 @@ export default function KeywordsPage() {
   // Bulk generation
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkCount, setBulkCount] = useState(3);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
 
   const fetchKeywords = useCallback(async () => {
     try {
@@ -268,6 +269,28 @@ export default function KeywordsPage() {
     } catch { toast.error("Failed to delete"); }
   };
 
+  const handleBulkDelete = async () => {
+    if (selected.size === 0) return;
+    if (!confirm(`Delete ${selected.size} keyword${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+    setIsBulkDeleting(true);
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/keywords/bulk`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: Array.from(selected) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(`Deleted ${data.deleted} keyword${data.deleted !== 1 ? "s" : ""}`);
+        setSelected(new Set());
+        fetchKeywords();
+      } else {
+        toast.error(data.error || "Bulk delete failed");
+      }
+    } catch { toast.error("Bulk delete failed"); }
+    finally { setIsBulkDeleting(false); }
+  };
+
   const toggleSelect = (id: string) => {
     setSelected(prev => {
       const next = new Set(prev);
@@ -347,9 +370,15 @@ export default function KeywordsPage() {
         <div className="flex items-center justify-between p-3 rounded-lg bg-primary/5 border border-primary/20">
           <p className="text-sm font-medium">{selected.size} keyword{selected.size !== 1 ? "s" : ""} selected</p>
           <div className="flex gap-2">
-            <Button size="sm" onClick={() => setShowBulkGenDialog(true)}>
-              <Bot className="mr-2 h-3.5 w-3.5" />
-              Generate Selected
+            {keywords.filter(k => selected.has(k.id) && k.status === "PENDING").length > 0 && (
+              <Button size="sm" onClick={() => setShowBulkGenDialog(true)}>
+                <Bot className="mr-2 h-3.5 w-3.5" />
+                Generate ({keywords.filter(k => selected.has(k.id) && k.status === "PENDING").length})
+              </Button>
+            )}
+            <Button size="sm" variant="destructive" onClick={handleBulkDelete} disabled={isBulkDeleting}>
+              {isBulkDeleting ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-2 h-3.5 w-3.5" />}
+              Delete ({selected.size})
             </Button>
             <Button size="sm" variant="outline" onClick={() => setSelected(new Set())}>
               Deselect All
@@ -389,9 +418,9 @@ export default function KeywordsPage() {
                 <TableRow>
                   <TableHead className="w-10">
                     <Checkbox
-                      checked={selected.size === pendingKeywords.length && pendingKeywords.length > 0}
+                      checked={selected.size === keywords.length && keywords.length > 0}
                       onCheckedChange={(v) => {
-                        if (v) setSelected(new Set(pendingKeywords.map(k => k.id)));
+                        if (v) setSelected(new Set(keywords.map(k => k.id)));
                         else setSelected(new Set());
                       }}
                     />
@@ -408,12 +437,10 @@ export default function KeywordsPage() {
                 {keywords.map((kw) => (
                   <TableRow key={kw.id} className={selected.has(kw.id) ? "bg-primary/5" : ""}>
                     <TableCell>
-                      {kw.status === "PENDING" && (
-                        <Checkbox
-                          checked={selected.has(kw.id)}
-                          onCheckedChange={() => toggleSelect(kw.id)}
-                        />
-                      )}
+                      <Checkbox
+                        checked={selected.has(kw.id)}
+                        onCheckedChange={() => toggleSelect(kw.id)}
+                      />
                     </TableCell>
                     <TableCell className="font-medium">{kw.keyword}</TableCell>
                     <TableCell>
