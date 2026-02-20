@@ -412,59 +412,62 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* How It Works Comparison */}
+      {/* How It Works */}
       <section id="how-it-works" className="py-24 px-4 bg-background">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl md:text-4xl font-bold mb-4">
               From Keyword to Ranking in 3 Steps
             </h2>
-            <p className="text-lg text-muted-foreground">It's really this simple.</p>
+            <p className="text-lg text-muted-foreground">It&apos;s really this simple.</p>
           </div>
-          
-          <div className="relative border-l-2 border-muted ml-4 md:ml-1/2 space-y-20">
+
+          <div className="grid md:grid-cols-3 gap-8 relative">
+            {/* Connector line (desktop only) */}
+            <div className="hidden md:block absolute top-16 left-[16.67%] right-[16.67%] h-0.5 bg-gradient-to-r from-blue-300 via-purple-300 to-green-300" />
+
             {[
               {
                 step: 1,
                 title: "Enter Your Topic",
                 text: "Just give us a keyword or a broad topic. We'll find the best opportunities and cluster them for authority.",
                 icon: Search,
-                color: "blue"
+                bgColor: "bg-blue-100",
+                textColor: "text-blue-600",
+                dotColor: "bg-blue-500",
               },
               {
                 step: 2,
                 title: "Customize & Generate",
                 text: "Set your tone, word count, and format. Our AI researches and writes the full article in minutes.",
                 icon: Sparkles,
-                color: "purple"
+                bgColor: "bg-purple-100",
+                textColor: "text-purple-600",
+                dotColor: "bg-purple-500",
               },
               {
                 step: 3,
                 title: "Publish & Rank",
                 text: "Review the draft (if you want) and push to your site with one click. We notify Google immediately.",
                 icon: TrendingUp,
-                color: "green"
-              }
-            ].map((item, i) => (
-              <div key={i} className="relative pl-8 md:pl-0">
-                <div className="md:w-1/2 md:mx-auto md:relative md:flex md:justify-end md:pr-16 md:text-right">
-                  <div className={`
-                    absolute left-[-9px] top-0 h-5 w-5 rounded-full border-4 border-background 
-                    ${item.color === 'blue' ? 'bg-blue-500' : item.color === 'purple' ? 'bg-purple-500' : 'bg-green-500'}
-                    md:left-1/2 md:-translate-x-1/2 md:top-2 shadow-lg z-10
-                  `}></div>
-                  
-                  <div className={`md:w-full flex flex-col ${i % 2 === 0 ? 'md:items-end md:text-right md:pr-0' : 'md:items-start md:text-left md:pl-16 md:ml-auto md:flex-row-reverse md:justify-end'}`}>
-                    <div className={`${i % 2 !== 0 ? 'md:absolute md:left-[55%]' : ''} mb-4 md:mb-0 bg-muted/20 p-6 rounded-2xl border hover:border-${item.color}-500/30 transition-colors w-full md:max-w-md`}>
-                       <div className={`h-12 w-12 rounded-lg bg-${item.color}-100 flex items-center justify-center mb-4 text-${item.color}-600 ${i % 2 === 0 ? 'md:ml-auto' : ''}`}>
-                         <item.icon className="h-6 w-6" />
-                       </div>
-                      <h3 className="text-xl font-bold mb-2 flex items-center gap-2 md:inline-flex">
-                        <span className="md:hidden">{item.step}.</span> {item.title}
-                      </h3>
-                      <p className="text-muted-foreground">{item.text}</p>
-                    </div>
+                bgColor: "bg-green-100",
+                textColor: "text-green-600",
+                dotColor: "bg-green-500",
+              },
+            ].map((item) => (
+              <div key={item.step} className="relative text-center">
+                {/* Step dot */}
+                <div className="flex justify-center mb-6">
+                  <div className={`relative z-10 h-8 w-8 rounded-full ${item.dotColor} border-4 border-background shadow-lg`} />
+                </div>
+
+                {/* Card */}
+                <div className="bg-muted/20 border rounded-2xl p-8 hover:shadow-lg transition-all">
+                  <div className={`h-14 w-14 rounded-xl ${item.bgColor} ${item.textColor} flex items-center justify-center mx-auto mb-5`}>
+                    <item.icon className="h-7 w-7" />
                   </div>
+                  <h3 className="text-xl font-bold mb-3">{item.title}</h3>
+                  <p className="text-muted-foreground leading-relaxed">{item.text}</p>
                 </div>
               </div>
             ))}
