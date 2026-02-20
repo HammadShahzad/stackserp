@@ -159,8 +159,8 @@ export default async function DashboardOverview() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {/* Recent Websites */}
-          {organization.websites.slice(0, 3).map((website) => (
+          {/* All Websites */}
+          {organization.websites.map((website) => (
             <Card key={website.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
