@@ -1080,9 +1080,9 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
                 </p>
                 <div className="flex gap-2 mt-3">
                   <Button asChild size="sm">
-                    <a href="/downloads/stackserp-connector.php" download>
+                    <a href="/api/download/plugin" download="stackserp-connector.zip">
                       <Download className="mr-2 h-3.5 w-3.5" />
-                      Download Plugin (.php)
+                      Download Plugin (.zip)
                     </a>
                   </Button>
                 </div>
@@ -1094,7 +1094,7 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
               <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
                 <li>Download the plugin file above</li>
                 <li>Go to WordPress Admin → Plugins → Add New → Upload Plugin</li>
-                <li>Upload the <code className="bg-muted px-1 rounded text-xs">stackserp-connector.php</code> file</li>
+                <li>Upload the <code className="bg-muted px-1 rounded text-xs">stackserp-connector.zip</code> file</li>
                 <li>Activate the plugin</li>
                 <li>Go to Settings → StackSerp and copy your API key</li>
                 <li>Come back here and enter your site URL + API key below</li>
