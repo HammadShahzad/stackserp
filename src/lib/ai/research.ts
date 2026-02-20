@@ -21,12 +21,13 @@ export async function researchKeyword(
     targetAudience: string;
   }
 ): Promise<ResearchResult> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
+  let apiKey = process.env.PERPLEXITY_API_KEY;
 
   if (!apiKey) {
     // Return mock data if key not configured
     return getMockResearch(keyword, websiteContext);
   }
+  apiKey = apiKey.replace(/\\n/g, "").trim();
 
   const prompt = `Research the keyword "${keyword}" for a ${websiteContext.niche} blog targeting ${websiteContext.targetAudience}.
 

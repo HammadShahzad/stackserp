@@ -31,9 +31,10 @@ export async function POST(req: Request) {
 
     // Step 1: Research the website using Perplexity
     let perplexityData = "";
-    const apiKey = process.env.PERPLEXITY_API_KEY;
+    let apiKey = process.env.PERPLEXITY_API_KEY;
 
     if (apiKey) {
+      apiKey = apiKey.replace(/\\n/g, "").trim();
       try {
         const response = await fetch(
           "https://api.perplexity.ai/chat/completions",

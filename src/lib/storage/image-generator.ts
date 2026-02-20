@@ -10,8 +10,9 @@ export async function generateBlogImage(
   slug: string,
   websiteId: string
 ): Promise<string> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
+  let apiKey = process.env.GOOGLE_AI_API_KEY;
   if (!apiKey) throw new Error("GOOGLE_AI_API_KEY not configured");
+  apiKey = apiKey.replace(/\\n/g, "").trim();
 
   // Generate image with Imagen 3.0
   const imageBytes = await generateWithImagen(prompt, apiKey);

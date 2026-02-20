@@ -8,8 +8,10 @@ let _genAI: GoogleGenerativeAI | null = null;
 
 export function getGemini() {
   if (!_genAI) {
-    const apiKey = process.env.GOOGLE_AI_API_KEY;
+    let apiKey = process.env.GOOGLE_AI_API_KEY;
     if (!apiKey) throw new Error("GOOGLE_AI_API_KEY is not configured");
+    // Remove accidental \n or whitespace from env var
+    apiKey = apiKey.replace(/\\n/g, "").trim();
     _genAI = new GoogleGenerativeAI(apiKey);
   }
   return _genAI;

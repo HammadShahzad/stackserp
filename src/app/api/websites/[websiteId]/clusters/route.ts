@@ -16,8 +16,9 @@ async function researchWebsiteWithPerplexity(
   brandName: string,
   niche: string
 ): Promise<{ content: string; status: "ok" | "skipped" | "failed" }> {
-  const apiKey = process.env.PERPLEXITY_API_KEY;
+  let apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) return { content: "", status: "skipped" };
+  apiKey = apiKey.replace(/\\n/g, "").trim();
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
