@@ -23,7 +23,6 @@ import {
   Eye,
   Edit,
   Trash2,
-  ExternalLink,
   Send,
   Archive,
   MoreVertical,
@@ -47,7 +46,6 @@ interface Post {
 interface Props {
   posts: Post[];
   websiteId: string;
-  liveBaseUrl: string; // e.g. https://blog.invoicecave.com or https://stackserp.com/blog/mysite
 }
 
 const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -58,7 +56,7 @@ const STATUS_BADGE_VARIANT: Record<string, "default" | "secondary" | "outline" |
   ARCHIVED: "secondary",
 };
 
-export function PostsTable({ posts: initialPosts, websiteId, liveBaseUrl }: Props) {
+export function PostsTable({ posts: initialPosts, websiteId }: Props) {
   const router = useRouter();
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [loadingId, setLoadingId] = useState<string | null>(null);
@@ -175,22 +173,12 @@ export function PostsTable({ posts: initialPosts, websiteId, liveBaseUrl }: Prop
                         Edit
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <a
-                        href={`${liveBaseUrl}/${post.slug}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        View Live
-                      </a>
-                    </DropdownMenuItem>
-                    {post.status !== "PUBLISHED" && (
+                    {post.status !== "REVIEW" && post.status !== "PUBLISHED" && (
                       <DropdownMenuItem
-                        onClick={() => patchPost(post.id, { status: "PUBLISHED" }, { status: "PUBLISHED" })}
+                        onClick={() => patchPost(post.id, { status: "REVIEW" }, { status: "REVIEW" })}
                       >
                         <Send className="mr-2 h-4 w-4" />
-                        Publish
+                        Mark Ready
                       </DropdownMenuItem>
                     )}
                     {post.status !== "ARCHIVED" && (

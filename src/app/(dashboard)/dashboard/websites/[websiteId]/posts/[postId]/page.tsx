@@ -323,13 +323,15 @@ export default function PostEditorPage() {
             </div>
           )}
 
+          {/* Save as ready for publishing */}
           <Button
             size="sm"
-            onClick={() => handleSave("PUBLISHED")}
+            variant="secondary"
+            onClick={() => handleSave("REVIEW")}
             disabled={isSaving}
           >
             <Send className="mr-2 h-4 w-4" />
-            Publish Here
+            Mark Ready
           </Button>
         </div>
       </div>

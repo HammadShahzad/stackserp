@@ -424,7 +424,7 @@ export default function LandingPage() {
 
           <div className="grid md:grid-cols-3 gap-8 relative">
             {/* Connector line (desktop only) */}
-            <div className="hidden md:block absolute top-16 left-[16.67%] right-[16.67%] h-0.5 bg-gradient-to-r from-blue-300 via-purple-300 to-green-300" />
+            <div className="hidden md:block absolute top-[1.25rem] left-[16.5%] right-[16.5%] h-0.5 bg-gradient-to-r from-blue-300 via-purple-300 to-green-300 opacity-50" />
 
             {[
               {
@@ -435,6 +435,7 @@ export default function LandingPage() {
                 bgColor: "bg-blue-100",
                 textColor: "text-blue-600",
                 dotColor: "bg-blue-500",
+                shadowColor: "shadow-blue-200"
               },
               {
                 step: 2,
@@ -444,6 +445,7 @@ export default function LandingPage() {
                 bgColor: "bg-purple-100",
                 textColor: "text-purple-600",
                 dotColor: "bg-purple-500",
+                shadowColor: "shadow-purple-200"
               },
               {
                 step: 3,
@@ -453,17 +455,20 @@ export default function LandingPage() {
                 bgColor: "bg-green-100",
                 textColor: "text-green-600",
                 dotColor: "bg-green-500",
+                shadowColor: "shadow-green-200"
               },
             ].map((item) => (
-              <div key={item.step} className="relative text-center">
+              <div key={item.step} className="relative text-center group">
                 {/* Step dot */}
-                <div className="flex justify-center mb-6">
-                  <div className={`relative z-10 h-8 w-8 rounded-full ${item.dotColor} border-4 border-background shadow-lg`} />
+                <div className="flex justify-center mb-8 relative">
+                  <div className={`relative z-10 h-10 w-10 rounded-full ${item.bgColor} flex items-center justify-center border-4 border-background shadow-lg transition-transform group-hover:scale-110 duration-300`}>
+                    <div className={`h-3 w-3 rounded-full ${item.dotColor}`} />
+                  </div>
                 </div>
 
                 {/* Card */}
-                <div className="bg-muted/20 border rounded-2xl p-8 hover:shadow-lg transition-all">
-                  <div className={`h-14 w-14 rounded-xl ${item.bgColor} ${item.textColor} flex items-center justify-center mx-auto mb-5`}>
+                <div className="bg-background border rounded-2xl p-8 shadow-sm hover:shadow-xl transition-all duration-300 hover:-translate-y-1 h-full">
+                  <div className={`h-14 w-14 rounded-2xl ${item.bgColor} ${item.textColor} flex items-center justify-center mx-auto mb-6 shadow-sm`}>
                     <item.icon className="h-7 w-7" />
                   </div>
                   <h3 className="text-xl font-bold mb-3">{item.title}</h3>

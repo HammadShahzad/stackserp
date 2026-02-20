@@ -39,11 +39,6 @@ export default async function PostsPage({
     scheduled: posts.filter((p) => p.status === "SCHEDULED").length,
   };
 
-  const appUrl = process.env.NEXTAUTH_URL || "";
-  const liveBaseUrl = website.customDomain
-    ? `https://${website.customDomain}`
-    : `${appUrl}/blog/${website.subdomain}`;
-
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -115,7 +110,6 @@ export default async function PostsPage({
                 createdAt: p.createdAt,
               }))}
               websiteId={websiteId}
-              liveBaseUrl={liveBaseUrl}
             />
           </CardContent>
         </Card>
