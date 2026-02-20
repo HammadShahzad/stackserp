@@ -167,6 +167,26 @@ export default function GeneratorPage() {
     prevJobsRef.current = newMap;
   }, [activeJobs]);
 
+  const handleRetry = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "retry", jobId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || "Retry failed");
+        return;
+      }
+      toast.success(`Retrying "${data.keyword}"...`);
+      await fetchJobs();
+      await fetchKeywords();
+    } catch {
+      toast.error("Failed to retry");
+    }
+  };
+
   const handleGenerate = async () => {
     setIsStarting(true);
     try {
@@ -236,7 +256,7 @@ export default function GeneratorPage() {
                 {runningJobs.length} active job{runningJobs.length > 1 ? "s" : ""}
               </h3>
               {runningJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} />
               ))}
             </div>
           )}
@@ -249,7 +269,7 @@ export default function GeneratorPage() {
                 {completedJobs.length} completed
               </h3>
               {completedJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} />
               ))}
             </div>
           )}
@@ -262,7 +282,7 @@ export default function GeneratorPage() {
                 {failedJobs.length} failed
               </h3>
               {failedJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} />
               ))}
             </div>
           )}
@@ -433,7 +453,7 @@ export default function GeneratorPage() {
   );
 }
 
-function JobCard({ job, websiteId }: { job: JobStatus; websiteId: string }) {
+function JobCard({ job, websiteId, onRetry }: { job: JobStatus; websiteId: string; onRetry?: (jobId: string) => void }) {
   const isRunning = job.status === "QUEUED" || job.status === "PROCESSING";
   const isCompleted = job.status === "COMPLETED";
   const isFailed = job.status === "FAILED";
@@ -487,10 +507,21 @@ function JobCard({ job, websiteId }: { job: JobStatus; websiteId: string }) {
           })}
         </div>
 
-        {isFailed && job.error && (
-          <p className="text-xs text-red-700 p-2 bg-red-100 rounded">
-            {job.error}
-          </p>
+        {isFailed && (
+          <div className="flex items-center justify-between gap-2 p-2 bg-red-100 rounded">
+            <p className="text-xs text-red-700 flex-1">
+              {job.error || "Generation failed"}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 h-7 text-xs shrink-0 text-red-700 hover:bg-red-200"
+              onClick={() => onRetry?.(job.id)}
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              Retry
+            </Button>
+          </div>
         )}
 
         {isCompleted && job.blogPost && (
