@@ -10,11 +10,22 @@ export interface SuggestedLink {
   reason: string;
 }
 
-async function discoverPagesWithPerplexity(
-  domain: string
-): Promise<string> {
+export interface SuggestResponse {
+  suggestions: SuggestedLink[];
+  steps: {
+    perplexity: "ok" | "skipped" | "failed";
+    gemini: "ok" | "failed";
+    pagesFound: number;
+  };
+  error?: string;
+}
+
+async function discoverPagesWithPerplexity(domain: string): Promise<{
+  content: string;
+  status: "ok" | "skipped" | "failed";
+}> {
   const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return "";
+  if (!apiKey) return { content: "", status: "skipped" };
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -42,11 +53,12 @@ async function discoverPagesWithPerplexity(
       signal: AbortSignal.timeout(25000),
     });
 
-    if (!response.ok) return "";
+    if (!response.ok) return { content: "", status: "failed" };
     const data = await response.json();
-    return data.choices?.[0]?.message?.content ?? "";
+    const content = data.choices?.[0]?.message?.content ?? "";
+    return { content, status: content ? "ok" : "failed" };
   } catch {
-    return "";
+    return { content: "", status: "failed" };
   }
 }
 
@@ -56,9 +68,9 @@ async function generateLinkPairsWithGemini(
   niche: string,
   pagesContext: string,
   existingKeywords: string[]
-): Promise<SuggestedLink[]> {
+): Promise<{ links: SuggestedLink[]; status: "ok" | "failed" }> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey) return { links: [], status: "failed" };
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -70,7 +82,7 @@ async function generateLinkPairsWithGemini(
 
   const pagesSection = pagesContext
     ? `\n\nPages discovered on the site:\n${pagesContext}`
-    : `\n\nWebsite: ${domain}`;
+    : `\n\nWebsite domain: ${domain} — no page list available, use the domain to infer likely pages (homepage, /pricing, /features, /about, /blog, etc.)`;
 
   const prompt = `You are an SEO internal linking expert. Generate keyword → URL pairs for internal linking on the website "${websiteName}" (${domain}) in the "${niche}" niche.${pagesSection}${existingList}
 
@@ -88,16 +100,17 @@ Return ONLY valid JSON array, no markdown:
   }
 ]
 
-Generate 15-25 high-value internal link pairs. Focus on: product features, pricing, key landing pages, pillar content pages, and category pages.`;
+Generate 15-25 high-value internal link pairs. If no page list was provided, use common page patterns for this type of website.`;
 
   try {
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
     const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
-    return JSON.parse(jsonMatch[0]) as SuggestedLink[];
+    if (!jsonMatch) return { links: [], status: "failed" };
+    const links = JSON.parse(jsonMatch[0]) as SuggestedLink[];
+    return { links, status: links.length > 0 ? "ok" : "failed" };
   } catch {
-    return [];
+    return { links: [], status: "failed" };
   }
 }
 
@@ -143,21 +156,21 @@ export async function POST(
     const domain = (website.brandUrl || `https://${website.domain}`).replace(/\/$/, "");
     const existingKeywords = website.internalLinks.map((l: { keyword: string }) => l.keyword);
 
-    // Step 1: Discover pages with Perplexity (real-time web search)
-    const pagesContext = await discoverPagesWithPerplexity(domain);
+    // Step 1: Discover pages with Perplexity
+    const perplexityResult = await discoverPagesWithPerplexity(domain);
 
-    // Step 2: Generate keyword→URL pairs with Gemini
-    const suggestions = await generateLinkPairsWithGemini(
+    // Step 2: Generate keyword→URL pairs with Gemini (works even without Perplexity)
+    const geminiResult = await generateLinkPairsWithGemini(
       domain,
       website.name,
       website.niche ?? "general",
-      pagesContext,
+      perplexityResult.content,
       existingKeywords
     );
 
-    // Filter out any suggestions with missing fields or that match existing keywords
+    // Filter valid suggestions
     const existing = new Set(existingKeywords.map((k) => k.toLowerCase()));
-    const filtered = suggestions.filter(
+    const filtered = geminiResult.links.filter(
       (s) =>
         s.keyword?.trim() &&
         s.url?.trim() &&
@@ -165,7 +178,21 @@ export async function POST(
         (s.url.startsWith("http://") || s.url.startsWith("https://"))
     );
 
-    return NextResponse.json({ suggestions: filtered });
+    // Count pages found (lines with "|" separator)
+    const pagesFound = perplexityResult.content
+      ? perplexityResult.content.split("\n").filter((l) => l.includes("|")).length
+      : 0;
+
+    const response: SuggestResponse = {
+      suggestions: filtered,
+      steps: {
+        perplexity: perplexityResult.status,
+        gemini: geminiResult.status,
+        pagesFound,
+      },
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error("Error generating link suggestions:", error);
     return NextResponse.json(
