@@ -6,7 +6,7 @@ import crypto from "crypto";
 
 export interface WebhookConfig {
   webhookUrl: string;
-  webhookSecret?: string;  // Used for HMAC signature in X-BlogForge-Signature header
+  webhookSecret?: string;  // Used for HMAC signature in X-StackSerp-Signature header
 }
 
 export interface WebhookPostPayload {
@@ -43,9 +43,9 @@ export async function sendWebhook(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "User-Agent": "BlogForge/1.0",
-    "X-BlogForge-Event": "post.published",
-    "X-BlogForge-Post-Id": payload.id,
+    "User-Agent": "StackSerp/1.0",
+    "X-StackSerp-Event": "post.published",
+    "X-StackSerp-Post-Id": payload.id,
   };
 
   // HMAC signature if secret provided
@@ -54,7 +54,7 @@ export async function sendWebhook(
       .createHmac("sha256", config.webhookSecret)
       .update(body)
       .digest("hex");
-    headers["X-BlogForge-Signature"] = `sha256=${sig}`;
+    headers["X-StackSerp-Signature"] = `sha256=${sig}`;
   }
 
   try {

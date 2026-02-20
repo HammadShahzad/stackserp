@@ -1,22 +1,22 @@
 #!/bin/bash
 # =============================================================================
-# SEO Blog SaaS — Full Deploy Script for DigitalOcean Droplet
+# StackSerp — Full Deploy Script for DigitalOcean Droplet
 # Safe to run alongside zerofrictionhire.com — uses port 3001, own DB
 #
 # Usage:
 #   chmod +x deploy.sh
 #   ./deploy.sh
 #
-# Requirements: Git repo must be at https://github.com/HammadShahzad/seo-blog-saas
+# Requirements: Git repo must be at https://github.com/HammadShahzad/stackserp
 # =============================================================================
 
 set -e  # Exit on any error
 
-APP_DIR="/var/www/seo-blog-saas"
+APP_DIR="/var/www/stackserp"
 APP_PORT=3001
-DB_NAME="seo_blog_saas"
-DB_USER="seo_blog_user"
-GITHUB_REPO="https://github.com/HammadShahzad/seo-blog-saas.git"
+DB_NAME="stackserp"
+DB_USER="stackserp_user"
+GITHUB_REPO="https://github.com/HammadShahzad/stackserp.git"
 LOG_DIR="/var/log/pm2"
 
 GREEN='\033[0;32m'
@@ -78,8 +78,8 @@ sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname = '${DB_USER}'" 
     DB_PASSWORD=$(openssl rand -hex 16)
     sudo -u postgres psql -c "CREATE USER ${DB_USER} WITH PASSWORD '${DB_PASSWORD}';"
     sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
-    echo "DB_PASSWORD=${DB_PASSWORD}" >> /root/.seo-blog-saas-secrets
-    log "DB password saved to /root/.seo-blog-saas-secrets"
+    echo "DB_PASSWORD=${DB_PASSWORD}" >> /root/.stackserp-secrets
+    log "DB password saved to /root/.stackserp-secrets"
 }
 
 # ─── 3. CLONE / UPDATE REPO ──────────────────────────────────────────────────
@@ -100,7 +100,7 @@ if [ ! -f "$APP_DIR/.env" ]; then
     log "Creating .env file..."
     
     # Read DB password from secrets file
-    DB_PASSWORD=$(grep DB_PASSWORD /root/.seo-blog-saas-secrets 2>/dev/null | cut -d= -f2 || echo "changeme")
+    DB_PASSWORD=$(grep DB_PASSWORD /root/.stackserp-secrets 2>/dev/null | cut -d= -f2 || echo "changeme")
     NEXTAUTH_SECRET=$(openssl rand -hex 32)
     CRON_SECRET=$(openssl rand -hex 20)
 
@@ -116,7 +116,7 @@ NEXTAUTH_URL="https://YOUR_DOMAIN"
 GOOGLE_CLIENT_ID=""
 GOOGLE_CLIENT_SECRET=""
 
-# AI Services — paste your keys here after deploy or set via: nano /var/www/seo-blog-saas/.env
+# AI Services — paste your keys here after deploy or set via: nano /var/www/stackserp/.env
 GOOGLE_AI_API_KEY=""
 PERPLEXITY_API_KEY=""
 
@@ -138,7 +138,7 @@ CRON_SECRET="${CRON_SECRET}"
 PORT=3001
 EOF
     warn "⚠  Edit $APP_DIR/.env and set NEXTAUTH_URL to your real domain!"
-    echo "CRON_SECRET=${CRON_SECRET}" >> /root/.seo-blog-saas-secrets
+    echo "CRON_SECRET=${CRON_SECRET}" >> /root/.stackserp-secrets
 fi
 
 # ─── 5. INSTALL DEPS & BUILD ──────────────────────────────────────────────────
@@ -154,8 +154,8 @@ npm run build
 
 # ─── 6. PM2 PROCESS ──────────────────────────────────────────────────────────
 log "Starting/reloading app with PM2 on port $APP_PORT..."
-pm2 describe seo-blog-saas > /dev/null 2>&1 && \
-    pm2 reload seo-blog-saas || \
+pm2 describe stackserp > /dev/null 2>&1 && \
+    pm2 reload stackserp || \
     pm2 start ecosystem.config.js --env production
 
 pm2 save
@@ -163,11 +163,11 @@ pm2 startup systemd -u root --hp /root 2>/dev/null | tail -1 | bash || true
 
 # ─── 7. NGINX CONFIG ──────────────────────────────────────────────────────────
 log "Setting up Nginx..."
-cp $APP_DIR/server/nginx.conf /etc/nginx/sites-available/seo-blog-saas
+cp $APP_DIR/server/nginx.conf /etc/nginx/sites-available/stackserp
 
 # Only create symlink if it doesn't exist
-[ -L /etc/nginx/sites-enabled/seo-blog-saas ] || \
-    ln -s /etc/nginx/sites-available/seo-blog-saas /etc/nginx/sites-enabled/seo-blog-saas
+[ -L /etc/nginx/sites-enabled/stackserp ] || \
+    ln -s /etc/nginx/sites-available/stackserp /etc/nginx/sites-enabled/stackserp
 
 nginx -t && systemctl reload nginx
 
@@ -176,28 +176,28 @@ log "Setting up system cron for auto-generation..."
 CRON_SECRET_VAL=$(grep CRON_SECRET $APP_DIR/.env | cut -d'"' -f2)
 
 # Write cron job — won't duplicate if already exists
-CRON_JOB="0 * * * * curl -s -X POST http://127.0.0.1:3001/api/cron/generate -H 'Authorization: Bearer ${CRON_SECRET_VAL}' -H 'Content-Type: application/json' >> /var/log/pm2/seo-blog-saas-cron.log 2>&1"
+CRON_JOB="0 * * * * curl -s -X POST http://127.0.0.1:3001/api/cron/generate -H 'Authorization: Bearer ${CRON_SECRET_VAL}' -H 'Content-Type: application/json' >> /var/log/pm2/stackserp-cron.log 2>&1"
 
-(crontab -l 2>/dev/null | grep -v "seo-blog-saas-cron\|/api/cron/generate"; echo "$CRON_JOB") | crontab -
+(crontab -l 2>/dev/null | grep -v "stackserp-cron\|/api/cron/generate"; echo "$CRON_JOB") | crontab -
 
 log "Cron installed — runs every hour at :00"
 
 # ─── DONE ────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-echo -e "${GREEN}  ✓ SEO Blog SaaS deployed successfully!${NC}"
+echo -e "${GREEN}  ✓ StackSerp deployed successfully!${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo "  App running on:   http://127.0.0.1:$APP_PORT"
 echo "  PM2 status:       pm2 status"
-echo "  App logs:         pm2 logs seo-blog-saas"
-echo "  Cron logs:        tail -f /var/log/pm2/seo-blog-saas-cron.log"
+echo "  App logs:         pm2 logs stackserp"
+echo "  Cron logs:        tail -f /var/log/pm2/stackserp-cron.log"
 echo ""
 echo "  ⚠ Next steps:"
 echo "  1. Edit $APP_DIR/.env → set NEXTAUTH_URL to your domain"
-echo "  2. Edit /etc/nginx/sites-available/seo-blog-saas → set YOUR_DOMAIN"
+echo "  2. Edit /etc/nginx/sites-available/stackserp → set YOUR_DOMAIN"
 echo "  3. Run: certbot --nginx -d YOUR_DOMAIN (free SSL)"
-echo "  4. Run: pm2 reload seo-blog-saas (after .env changes)"
+echo "  4. Run: pm2 reload stackserp (after .env changes)"
 echo ""
 echo "  zerofrictionhire.com is untouched ✓"
 echo ""

@@ -164,7 +164,7 @@ export function AppSidebar({ websites, currentWebsiteId, user }: AppSidebarProps
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
             <Zap className="h-5 w-5" />
           </div>
-          <span className="text-lg font-bold">BlogForge</span>
+          <span className="text-lg font-bold">StackSerp</span>
         </Link>
       </SidebarHeader>
 

@@ -229,6 +229,28 @@ export async function processJob(jobId: string): Promise<void> {
 }
 
 /**
+ * Fire-and-forget HTTP call to the Droplet worker to pick up a job.
+ * Falls back silently — the worker also polls on its own.
+ */
+export function triggerWorker(jobId: string) {
+  const workerUrl = process.env.WORKER_URL; // e.g. http://167.71.96.242:3001
+  const secret = process.env.CRON_SECRET;
+  if (!workerUrl || !secret) return;
+
+  fetch(`${workerUrl}/api/worker/process`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${secret}`,
+    },
+    body: JSON.stringify({ jobId }),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => {
+    // Silent — worker will pick it up via polling
+  });
+}
+
+/**
  * Get job status with progress
  */
 export async function getJobStatus(jobId: string) {
@@ -246,6 +268,47 @@ export async function getJobStatus(jobId: string) {
       output: true,
     },
   });
+}
+
+/**
+ * Recover jobs stuck in PROCESSING for more than 10 minutes.
+ * Marks them as FAILED and resets their associated keywords to PENDING.
+ */
+export async function recoverStuckJobs(): Promise<number> {
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+
+  const stuckJobs = await prisma.generationJob.findMany({
+    where: {
+      status: "PROCESSING",
+      startedAt: { lt: tenMinutesAgo },
+    },
+    select: { id: true, keywordId: true },
+  });
+
+  if (stuckJobs.length === 0) return 0;
+
+  await prisma.generationJob.updateMany({
+    where: { id: { in: stuckJobs.map((j) => j.id) } },
+    data: {
+      status: "FAILED",
+      error: "Job timed out. Click Retry to try again.",
+      completedAt: new Date(),
+    },
+  });
+
+  const keywordIds = stuckJobs
+    .map((j) => j.keywordId)
+    .filter((id): id is string => id !== null);
+
+  if (keywordIds.length > 0) {
+    await prisma.blogKeyword.updateMany({
+      where: { id: { in: keywordIds } },
+      data: { status: "PENDING" },
+    });
+  }
+
+  console.log(`[recoverStuckJobs] Recovered ${stuckJobs.length} stuck job(s)`);
+  return stuckJobs.length;
 }
 
 /**

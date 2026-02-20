@@ -43,10 +43,10 @@ export async function POST(
 
     const result = await sendWebhook({
       id: "test-" + Date.now(),
-      title: "BlogForge Webhook Test",
+      title: "StackSerp Webhook Test",
       slug: "test-post",
-      content: "# Test\n\nThis is a test webhook from BlogForge.",
-      contentHtml: "<h1>Test</h1><p>This is a test webhook from BlogForge.</p>",
+      content: "# Test\n\nThis is a test webhook from StackSerp.",
+      contentHtml: "<h1>Test</h1><p>This is a test webhook from StackSerp.</p>",
       excerpt: "Test webhook",
       status: "PUBLISHED",
       publishedAt: new Date().toISOString(),

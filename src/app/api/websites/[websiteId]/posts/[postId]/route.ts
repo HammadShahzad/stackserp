@@ -60,6 +60,32 @@ export async function PATCH(
       if (field in body) updateData[field] = body[field];
     }
 
+    // Snapshot current post state as a version before applying edits
+    if (body.title || body.content || body.metaTitle || body.metaDescription) {
+      const currentPost = await prisma.blogPost.findUnique({
+        where: { id: postId },
+        select: { title: true, content: true, metaTitle: true, metaDescription: true },
+      });
+      if (currentPost) {
+        const lastVersion = await prisma.postVersion.findFirst({
+          where: { blogPostId: postId },
+          orderBy: { version: "desc" },
+          select: { version: true },
+        });
+        await prisma.postVersion.create({
+          data: {
+            blogPostId: postId,
+            version: (lastVersion?.version ?? 0) + 1,
+            title: currentPost.title,
+            content: currentPost.content,
+            metaTitle: currentPost.metaTitle,
+            metaDescription: currentPost.metaDescription,
+            editedBy: session.user.id,
+          },
+        });
+      }
+    }
+
     // Auto-set publishedAt when publishing
     if (body.status === "PUBLISHED") {
       updateData.publishedAt = new Date();

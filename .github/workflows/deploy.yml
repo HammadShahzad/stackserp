@@ -8,7 +8,7 @@ on:
 env:
   DEPLOY_HOST: 167.71.96.242
   DEPLOY_USER: root
-  DEPLOY_PATH: /var/www/seo-blog-saas
+  DEPLOY_PATH: /var/www/stackserp
 
 jobs:
   build-and-deploy:
@@ -89,7 +89,7 @@ jobs:
           # Sync config files
           rsync -avz \
             -e "ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no" \
-            ecosystem.config.js package.json \
+            ecosystem.config.js worker.js package.json \
             ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
 
       - name: Run DB migrations via standalone prisma
@@ -103,21 +103,18 @@ jobs:
           # Run migration using the node_modules we shipped in standalone
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'ENDSSH'
-          cd /var/www/seo-blog-saas
+          cd /var/www/stackserp
           source /etc/environment 2>/dev/null || true
-          # Load .env if it exists
           if [ -f .env ]; then export $(grep -v '^#' .env | xargs); fi
-          # Run migrations using prisma CLI from standalone node_modules
           node .next/standalone/node_modules/.bin/prisma migrate deploy \
-            --schema /var/www/seo-blog-saas/prisma/schema.prisma 2>&1 || echo "Migration note: check DB manually"
+            --schema /var/www/stackserp/prisma/schema.prisma 2>&1 || echo "Migration note: check DB manually"
           ENDSSH
 
       - name: Reload PM2 app
         run: |
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no \
             ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'ENDSSH'
-          cd /var/www/seo-blog-saas
-          # Restart with new standalone server
+          cd /var/www/stackserp
           pm2 reload ecosystem.config.js --env production || pm2 start ecosystem.config.js --env production
           pm2 save
           # Verify it's running

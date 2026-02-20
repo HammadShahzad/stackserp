@@ -7,7 +7,7 @@
  */
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { enqueueGenerationJob, processJob, checkGenerationLimit } from "@/lib/job-queue";
+import { enqueueGenerationJob, checkGenerationLimit, recoverStuckJobs, triggerWorker } from "@/lib/job-queue";
 import { runPublishHook } from "@/lib/on-publish";
 
 export async function POST(req: Request) {
@@ -23,6 +23,9 @@ export async function POST(req: Request) {
   const scheduledResults: { postId: string; title: string }[] = [];
 
   try {
+    // ── 0. Recover stuck jobs before doing anything else ─────
+    const recovered = await recoverStuckJobs();
+
     // ── 1. Publish scheduled posts that are due ──────────────
     const dueScheduledPosts = await prisma.blogPost.findMany({
       where: {
@@ -94,12 +97,13 @@ export async function POST(req: Request) {
         autoPublish: website.blogSettings?.autoPublish ?? false,
       });
 
-      // Process inline for cron (can be moved to queue worker)
-      await processJob(jobId);
-      results.push({ websiteId: website.id, name: website.name, action: "generated", jobId });
+      // Worker on the Droplet will pick up the QUEUED job
+      triggerWorker(jobId);
+      results.push({ websiteId: website.id, name: website.name, action: "queued", jobId });
     }
 
     return NextResponse.json({
+      recoveredJobs: recovered,
       scheduledPublished: scheduledResults.length,
       generated: results.filter((r) => r.action === "generated").length,
       results,

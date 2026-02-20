@@ -696,7 +696,7 @@ function WebhookSettings({ websiteId }: { websiteId: string }) {
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            We'll send <code className="bg-muted px-1 rounded">X-BlogForge-Signature: sha256=…</code> with each request
+            We'll send <code className="bg-muted px-1 rounded">X-StackSerp-Signature: sha256=…</code> with each request
           </p>
         </div>
         <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground space-y-1">
@@ -928,7 +928,7 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
             WordPress Integration
           </CardTitle>
           <CardDescription>
-            Choose how BlogForge connects to your WordPress site
+            Choose how StackSerp connects to your WordPress site
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -995,7 +995,7 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
               <ol className="list-decimal list-inside space-y-0.5 text-muted-foreground text-xs">
                 <li>Go to your WordPress admin → Users → Profile</li>
                 <li>Scroll to "Application Passwords" section</li>
-                <li>Type "BlogForge" and click "Add New Application Password"</li>
+                <li>Type "StackSerp" and click "Add New Application Password"</li>
                 <li>Copy the generated password (shown once)</li>
                 <li>Paste it below</li>
               </ol>
@@ -1076,7 +1076,7 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
       {mode === "plugin" && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">BlogForge WordPress Plugin</CardTitle>
+            <CardTitle className="text-base">StackSerp WordPress Plugin</CardTitle>
             <CardDescription>
               Install our free plugin for advanced WordPress integration
             </CardDescription>
@@ -1087,13 +1087,13 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
                 <Plug className="h-6 w-6 text-primary" />
               </div>
               <div>
-                <p className="font-semibold">BlogForge Connector Plugin</p>
+                <p className="font-semibold">StackSerp Connector Plugin</p>
                 <p className="text-sm text-muted-foreground mt-0.5">
                   Free plugin · Works with all WordPress themes · Supports Yoast SEO, custom post types, and more
                 </p>
                 <div className="flex gap-2 mt-3">
                   <Button asChild size="sm">
-                    <a href="/downloads/blogforge-connector.php" download>
+                    <a href="/downloads/stackserp-connector.php" download>
                       <Download className="mr-2 h-3.5 w-3.5" />
                       Download Plugin (.php)
                     </a>
@@ -1107,9 +1107,9 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
               <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground">
                 <li>Download the plugin file above</li>
                 <li>Go to WordPress Admin → Plugins → Add New → Upload Plugin</li>
-                <li>Upload the <code className="bg-muted px-1 rounded text-xs">blogforge-connector.php</code> file</li>
+                <li>Upload the <code className="bg-muted px-1 rounded text-xs">stackserp-connector.php</code> file</li>
                 <li>Activate the plugin</li>
-                <li>Go to Settings → BlogForge and copy your API key</li>
+                <li>Go to Settings → StackSerp and copy your API key</li>
                 <li>Come back here and enter your site URL + API key below</li>
               </ol>
             </div>
@@ -1131,7 +1131,7 @@ function WordPressSettings({ websiteId }: { websiteId: string }) {
                 <div className="relative">
                   <Input
                     type={showPluginKey ? "text" : "password"}
-                    placeholder="From Settings → BlogForge in your WP admin"
+                    placeholder="From Settings → StackSerp in your WP admin"
                     value={pluginApiKey}
                     onChange={(e) => setPluginApiKey(e.target.value)}
                     className="pr-10"

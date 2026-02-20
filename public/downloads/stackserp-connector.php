@@ -1,50 +1,50 @@
 <?php
 /**
- * Plugin Name: BlogForge Connector
- * Plugin URI: https://seo-blog-saas.vercel.app
- * Description: Connects your WordPress site to BlogForge for automatic AI-powered content publishing.
+ * Plugin Name: StackSerp Connector
+ * Plugin URI: https://stackserp.com
+ * Description: Connects your WordPress site to StackSerp for automatic AI-powered content publishing.
  * Version: 1.0.0
- * Author: BlogForge
+ * Author: StackSerp
  * License: GPL v2 or later
- * Text Domain: blogforge-connector
+ * Text Domain: stackserp-connector
  */
 
 if (!defined('ABSPATH')) exit;
 
-define('BLOGFORGE_VERSION', '1.0.0');
-define('BLOGFORGE_OPTION_KEY', 'blogforge_api_key');
+define('STACKSERP_VERSION', '1.0.0');
+define('STACKSERP_OPTION_KEY', 'stackserp_api_key');
 
 // ─────────────────────────────────────────────
 // Admin Menu
 // ─────────────────────────────────────────────
 add_action('admin_menu', function () {
     add_options_page(
-        'BlogForge Connector',
-        'BlogForge',
+        'StackSerp Connector',
+        'StackSerp',
         'manage_options',
-        'blogforge-connector',
-        'blogforge_settings_page'
+        'stackserp-connector',
+        'stackserp_settings_page'
     );
 });
 
-function blogforge_settings_page() {
+function stackserp_settings_page() {
     if (!current_user_can('manage_options')) return;
 
-    if (isset($_POST['blogforge_save']) && check_admin_referer('blogforge_settings')) {
-        $api_key = sanitize_text_field($_POST['blogforge_api_key'] ?? '');
+    if (isset($_POST['stackserp_save']) && check_admin_referer('stackserp_settings')) {
+        $api_key = sanitize_text_field($_POST['stackserp_api_key'] ?? '');
         if (empty($api_key)) {
             $api_key = wp_generate_password(32, false);
         }
-        update_option(BLOGFORGE_OPTION_KEY, $api_key);
+        update_option(STACKSERP_OPTION_KEY, $api_key);
         echo '<div class="notice notice-success"><p>Settings saved!</p></div>';
     }
 
-    $api_key = get_option(BLOGFORGE_OPTION_KEY, '');
-    $endpoint = home_url('/wp-json/blogforge/v1/');
+    $api_key = get_option(STACKSERP_OPTION_KEY, '');
+    $endpoint = home_url('/wp-json/stackserp/v1/');
     ?>
     <div class="wrap">
-        <h1>BlogForge Connector</h1>
-        <p>Connect your WordPress site to <a href="https://seo-blog-saas.vercel.app" target="_blank">BlogForge</a> to receive AI-generated blog posts automatically.</p>
+        <h1>StackSerp Connector</h1>
+        <p>Connect your WordPress site to <a href="https://stackserp.com" target="_blank">StackSerp</a> to receive AI-generated blog posts automatically.</p>
 
         <table class="form-table">
             <tr>
@@ -53,33 +53,33 @@ function blogforge_settings_page() {
                     <code style="background:#f0f0f0;padding:8px 12px;border-radius:4px;display:inline-block;">
                         <?php echo esc_html($endpoint); ?>
                     </code>
-                    <p class="description">Add this in BlogForge → Website Settings → WordPress → Plugin Mode</p>
+                    <p class="description">Add this in StackSerp → Website Settings → WordPress → Plugin Mode</p>
                 </td>
             </tr>
         </table>
 
         <form method="post">
-            <?php wp_nonce_field('blogforge_settings'); ?>
+            <?php wp_nonce_field('stackserp_settings'); ?>
             <table class="form-table">
                 <tr>
-                    <th><label for="blogforge_api_key">API Key (Secret)</label></th>
+                    <th><label for="stackserp_api_key">API Key (Secret)</label></th>
                     <td>
-                        <input type="text" id="blogforge_api_key" name="blogforge_api_key"
+                        <input type="text" id="stackserp_api_key" name="stackserp_api_key"
                                value="<?php echo esc_attr($api_key); ?>"
                                class="regular-text"
                                placeholder="Leave blank to auto-generate" />
-                        <p class="description">Copy this key into BlogForge → Website Settings → WordPress → Plugin API Key</p>
+                        <p class="description">Copy this key into StackSerp → Website Settings → WordPress → Plugin API Key</p>
                     </td>
                 </tr>
             </table>
             <p class="submit">
-                <input type="submit" name="blogforge_save" class="button-primary" value="Save Settings">
+                <input type="submit" name="stackserp_save" class="button-primary" value="Save Settings">
             </p>
         </form>
 
         <?php if ($api_key): ?>
         <hr>
-        <h2>Connection Details for BlogForge</h2>
+        <h2>Connection Details for StackSerp</h2>
         <table class="widefat" style="max-width:600px">
             <tbody>
                 <tr><td><strong>Mode</strong></td><td>Plugin (Recommended)</td></tr>
@@ -96,9 +96,9 @@ function blogforge_settings_page() {
         <ol>
             <li>Go to <strong>Users → Profile</strong></li>
             <li>Scroll to <strong>Application Passwords</strong></li>
-            <li>Enter "BlogForge" as the name and click <strong>Add New Application Password</strong></li>
+            <li>Enter "StackSerp" as the name and click <strong>Add New Application Password</strong></li>
             <li>Copy the generated password</li>
-            <li>In BlogForge: Settings → WordPress → Username + Application Password</li>
+            <li>In StackSerp: Settings → WordPress → Username + Application Password</li>
         </ol>
     </div>
     <?php
@@ -108,31 +108,31 @@ function blogforge_settings_page() {
 // REST API Endpoint
 // ─────────────────────────────────────────────
 add_action('rest_api_init', function () {
-    register_rest_route('blogforge/v1', '/posts', [
+    register_rest_route('stackserp/v1', '/posts', [
         'methods'             => 'POST',
-        'callback'            => 'blogforge_create_post',
-        'permission_callback' => 'blogforge_authenticate',
+        'callback'            => 'stackserp_create_post',
+        'permission_callback' => 'stackserp_authenticate',
     ]);
 
-    register_rest_route('blogforge/v1', '/status', [
+    register_rest_route('stackserp/v1', '/status', [
         'methods'             => 'GET',
-        'callback'            => fn() => new WP_REST_Response(['status' => 'connected', 'version' => BLOGFORGE_VERSION], 200),
-        'permission_callback' => 'blogforge_authenticate',
+        'callback'            => fn() => new WP_REST_Response(['status' => 'connected', 'version' => STACKSERP_VERSION], 200),
+        'permission_callback' => 'stackserp_authenticate',
     ]);
 });
 
-function blogforge_authenticate(WP_REST_Request $request): bool {
-    $stored_key = get_option(BLOGFORGE_OPTION_KEY, '');
+function stackserp_authenticate(WP_REST_Request $request): bool {
+    $stored_key = get_option(STACKSERP_OPTION_KEY, '');
     if (empty($stored_key)) return false;
 
-    $provided = $request->get_header('X-BlogForge-Key')
+    $provided = $request->get_header('X-StackSerp-Key')
              ?: $request->get_param('api_key')
              ?: '';
 
     return hash_equals($stored_key, trim($provided));
 }
 
-function blogforge_create_post(WP_REST_Request $request): WP_REST_Response {
+function stackserp_create_post(WP_REST_Request $request): WP_REST_Response {
     $params = $request->get_json_params();
 
     $title   = sanitize_text_field($params['title'] ?? '');
@@ -178,7 +178,7 @@ function blogforge_create_post(WP_REST_Request $request): WP_REST_Response {
 
     // Upload featured image from URL
     if (!empty($params['featured_image_url'])) {
-        $media_id = blogforge_sideload_image($params['featured_image_url'], $post_id, $title);
+        $media_id = stackserp_sideload_image($params['featured_image_url'], $post_id, $title);
         if ($media_id && !is_wp_error($media_id)) {
             set_post_thumbnail($post_id, $media_id);
         }
@@ -192,7 +192,7 @@ function blogforge_create_post(WP_REST_Request $request): WP_REST_Response {
     ], 201);
 }
 
-function blogforge_sideload_image(string $url, int $post_id, string $title): int|WP_Error {
+function stackserp_sideload_image(string $url, int $post_id, string $title): int|WP_Error {
     require_once ABSPATH . 'wp-admin/includes/media.php';
     require_once ABSPATH . 'wp-admin/includes/file.php';
     require_once ABSPATH . 'wp-admin/includes/image.php';

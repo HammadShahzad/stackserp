@@ -1,4 +1,4 @@
-# BlogForge - AI-Powered SEO Blog SaaS
+# StackSerp - AI-Powered SEO Blog SaaS
 
 A SaaS platform that lets users manage **automated, AI-powered SEO blog content** for **multiple websites** from a single dashboard.
 

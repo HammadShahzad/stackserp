@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import {
   Check,
   X,
@@ -20,8 +19,8 @@ import {
   Users,
   Zap,
   Crown,
-  ArrowRight,
 } from "lucide-react";
+import { UpgradeButton, ManageButton } from "./billing-client";
 
 export default async function BillingPage() {
   const { organization } = await getCurrentOrganization();
@@ -87,6 +86,9 @@ export default async function BillingPage() {
               </div>
             </div>
           </CardContent>
+          <CardFooter>
+            <ManageButton />
+          </CardFooter>
         </Card>
       )}
 
@@ -163,15 +165,16 @@ export default async function BillingPage() {
                     <Button className="w-full" variant="outline" disabled>
                       Current Plan
                     </Button>
-                  ) : planOrder.indexOf(planKey) > planOrder.indexOf(currentPlan as typeof planOrder[number]) ? (
-                    <Button className="w-full">
-                      Upgrade
-                      <ArrowRight className="ml-2 h-4 w-4" />
-                    </Button>
+                  ) : planKey === "FREE" ? (
+                    <ManageButton />
                   ) : (
-                    <Button className="w-full" variant="outline">
-                      Downgrade
-                    </Button>
+                    <UpgradeButton
+                      planKey={planKey}
+                      isUpgrade={
+                        planOrder.indexOf(planKey) >
+                        planOrder.indexOf(currentPlan as typeof planOrder[number])
+                      }
+                    />
                   )}
                 </CardFooter>
               </Card>

@@ -5,7 +5,7 @@
 import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
-const FROM = process.env.RESEND_FROM_EMAIL || "BlogForge <noreply@blogforge.app>";
+const FROM = process.env.RESEND_FROM_EMAIL || "StackSerp <noreply@stackserp.com>";
 
 async function send(to: string, subject: string, html: string) {
   if (!resend) {
@@ -32,7 +32,7 @@ export async function sendPostGeneratedEmail(opts: {
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111">
       <div style="background:#4F46E5;padding:24px 32px;border-radius:8px 8px 0 0">
-        <h1 style="color:white;margin:0;font-size:20px">⚡ BlogForge</h1>
+        <h1 style="color:white;margin:0;font-size:20px">⚡ StackSerp</h1>
       </div>
       <div style="padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
         <h2 style="margin:0 0 8px">Your post is ready! 🎉</h2>
@@ -70,7 +70,7 @@ export async function sendLimitWarningEmail(opts: {
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111">
       <div style="background:#f59e0b;padding:24px 32px;border-radius:8px 8px 0 0">
-        <h1 style="color:white;margin:0;font-size:20px">⚡ BlogForge</h1>
+        <h1 style="color:white;margin:0;font-size:20px">⚡ StackSerp</h1>
       </div>
       <div style="padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
         <h2 style="margin:0 0 8px">You're at ${pct}% of your monthly limit</h2>
@@ -104,7 +104,7 @@ export async function sendWeeklyDigestEmail(opts: {
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111">
       <div style="background:#4F46E5;padding:24px 32px;border-radius:8px 8px 0 0">
-        <h1 style="color:white;margin:0;font-size:20px">⚡ BlogForge — Weekly Digest</h1>
+        <h1 style="color:white;margin:0;font-size:20px">⚡ StackSerp — Weekly Digest</h1>
       </div>
       <div style="padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
         <h2 style="margin:0 0 4px">Your week at a glance</h2>

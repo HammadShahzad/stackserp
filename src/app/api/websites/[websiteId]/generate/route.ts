@@ -1,12 +1,13 @@
 /**
  * POST /api/websites/[websiteId]/generate
- * Enqueue a blog generation job for the next pending keyword (or a specific one)
+ * Enqueue a blog generation job for the next pending keyword (or a specific one).
+ * The job is picked up and processed by the Droplet worker — NOT by Vercel.
  */
-import { NextResponse, after } from "next/server";
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { enqueueGenerationJob, checkGenerationLimit, processJob } from "@/lib/job-queue";
+import { enqueueGenerationJob, checkGenerationLimit, triggerWorker } from "@/lib/job-queue";
 
 async function verifyAccess(websiteId: string, userId: string) {
   const membership = await prisma.organizationMember.findFirst({
@@ -32,7 +33,6 @@ export async function POST(
       return NextResponse.json({ error: "Website not found" }, { status: 404 });
     }
 
-    // Check plan limits
     const limitCheck = await checkGenerationLimit(websiteId);
     if (!limitCheck.allowed) {
       return NextResponse.json({ error: limitCheck.reason }, { status: 403 });
@@ -47,14 +47,12 @@ export async function POST(
       autoPublish = false,
     } = body;
 
-    // Find the keyword to generate
     let keyword;
     if (keywordId) {
       keyword = await prisma.blogKeyword.findFirst({
         where: { id: keywordId, websiteId, status: "PENDING" },
       });
     } else {
-      // Pick next pending keyword by priority
       keyword = await prisma.blogKeyword.findFirst({
         where: { websiteId, status: "PENDING" },
         orderBy: [{ priority: "desc" }, { createdAt: "asc" }],
@@ -68,7 +66,6 @@ export async function POST(
       );
     }
 
-    // Check if already processing
     const activeJob = await prisma.generationJob.findFirst({
       where: {
         websiteId,
@@ -83,7 +80,6 @@ export async function POST(
       );
     }
 
-    // Enqueue the job
     const jobId = await enqueueGenerationJob({
       keywordId: keyword.id,
       keyword: keyword.keyword,
@@ -94,15 +90,8 @@ export async function POST(
       autoPublish,
     });
 
-    // Use Next.js `after()` to keep the serverless function alive after response.
-    // This replaces setTimeout and prevents Vercel from killing the job mid-generation.
-    after(async () => {
-      try {
-        await processJob(jobId);
-      } catch (err) {
-        console.error("Background job failed:", err);
-      }
-    });
+    // Notify the Droplet worker to pick up the job (fire-and-forget)
+    triggerWorker(jobId);
 
     return NextResponse.json({
       jobId,

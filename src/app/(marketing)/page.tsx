@@ -27,11 +27,11 @@ export default function LandingPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
                 <Zap className="h-5 w-5" />
               </div>
-              <span className="text-xl font-bold">BlogForge</span>
+              <span className="text-xl font-bold">StackSerp</span>
             </Link>
             <div className="hidden md:flex items-center gap-6">
               <Link
-                href="#features"
+                href="/features"
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
                 Features
@@ -43,7 +43,7 @@ export default function LandingPage() {
                 How It Works
               </Link>
               <Link
-                href="#pricing"
+                href="/pricing"
                 className="text-sm text-muted-foreground hover:text-foreground"
               >
                 Pricing
@@ -314,10 +314,10 @@ export default function LandingPage() {
             <div className="flex h-6 w-6 items-center justify-center rounded bg-primary text-primary-foreground">
               <Zap className="h-4 w-4" />
             </div>
-            <span className="font-semibold">BlogForge</span>
+            <span className="font-semibold">StackSerp</span>
           </div>
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} BlogForge. All rights reserved.
+            &copy; {new Date().getFullYear()} StackSerp. All rights reserved.
           </p>
         </div>
       </footer>

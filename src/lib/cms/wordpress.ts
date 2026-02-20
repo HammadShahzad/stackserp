@@ -2,7 +2,7 @@
  * WordPress REST API Integration
  * Supports two modes:
  *  1. Application Passwords (WP 5.6+) — no plugin required
- *  2. BlogForge Plugin — uses X-BlogForge-Key header and custom endpoint
+ *  2. StackSerp Plugin — uses X-StackSerp-Key header and custom endpoint
  *
  * Mode is detected by cmsApiKey prefix:
  *  - "plugin:<key>" → Plugin mode
@@ -44,7 +44,7 @@ export interface WordPressConfig {
   siteUrl: string;         // e.g. https://mysite.com
   username: string;        // WordPress username (app-password mode)
   appPassword: string;     // Application Password (app-password mode)
-  pluginApiKey?: string;   // BlogForge plugin API key (plugin mode)
+  pluginApiKey?: string;   // StackSerp plugin API key (plugin mode)
   defaultStatus?: "draft" | "publish";
   defaultCategoryId?: number;
 }
@@ -379,8 +379,8 @@ export async function pushToWordPress(
 }
 
 /**
- * Push a blog post via the BlogForge Connector plugin.
- * Uses /wp-json/blogforge/v1/posts with X-BlogForge-Key header.
+ * Push a blog post via the StackSerp Connector plugin.
+ * Uses /wp-json/stackserp/v1/posts with X-StackSerp-Key header.
  */
 export async function pushToWordPressPlugin(
   post: WordPressPostPayload,
@@ -391,11 +391,11 @@ export async function pushToWordPressPlugin(
   const htmlContent = markdownToHtml(post.content);
 
   try {
-    const res = await fetch(`${base}/wp-json/blogforge/v1/posts`, {
+    const res = await fetch(`${base}/wp-json/stackserp/v1/posts`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-BlogForge-Key": pluginApiKey,
+        "X-StackSerp-Key": pluginApiKey,
       },
       body: JSON.stringify({
         title: post.title,

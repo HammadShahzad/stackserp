@@ -9,6 +9,7 @@ import { shareToLinkedIn } from "./social/linkedin";
 import { sendWebhook } from "./cms/webhook";
 import { pushToGhost } from "./cms/ghost";
 import { pushToShopify, ShopifyConfig } from "./cms/shopify";
+import { pushToWebflow, WebflowConfig } from "./cms/webflow";
 import { sendPostGeneratedEmail } from "./email";
 import { markdownToHtml } from "./cms/wordpress";
 
@@ -40,6 +41,7 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
         webhookUrl: true, webhookSecret: true,
         ghostConfig: true,
         shopifyConfig: true,
+        cmsType: true, cmsApiKey: true,
         organization: {
           select: {
             members: {
@@ -166,7 +168,24 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
     })().catch(e => console.error("[Ghost] error:", e)));
   }
 
-  // 8. Email notification to owner
+  // 8. Webflow auto-push (if cmsType is WEBFLOW and it's auto-triggered)
+  if (website.cmsType === "WEBFLOW" && website.cmsApiKey && triggeredBy === "auto") {
+    tasks.push((async () => {
+      const config = JSON.parse(website.cmsApiKey as string) as WebflowConfig;
+      const result = await pushToWebflow({
+        title: post.title,
+        slug: post.slug,
+        contentHtml: markdownToHtml(post.content),
+        excerpt: post.excerpt || undefined,
+        metaTitle: post.metaTitle || undefined,
+        metaDescription: post.metaDescription || undefined,
+      }, config);
+      if (result.success) console.log(`[Webflow] Pushed item: ${result.itemId}`);
+      else console.error("[Webflow] failed:", result.error);
+    })().catch(e => console.error("[Webflow] error:", e)));
+  }
+
+  // 9. Email notification to owner
   if (ownerEmail) {
     tasks.push(
       sendPostGeneratedEmail({

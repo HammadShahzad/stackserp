@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     ? (await import("resend")).Resend
     : null;
   const mailer = resend ? new resend(process.env.RESEND_API_KEY!) : null;
-  const from = process.env.RESEND_FROM_EMAIL || "BlogForge <noreply@blogforge.app>";
+  const from = process.env.RESEND_FROM_EMAIL || "StackSerp <noreply@stackserp.com>";
 
   for (const website of websites) {
     const ownerEmail = website.organization.members[0]?.user?.email;
@@ -86,7 +86,7 @@ export async function POST(req: Request) {
     const html = `
       <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#111">
         <div style="background:#4F46E5;padding:24px 32px;border-radius:8px 8px 0 0">
-          <h1 style="color:white;margin:0;font-size:20px">⚡ BlogForge — Monthly Report</h1>
+          <h1 style="color:white;margin:0;font-size:20px">⚡ StackSerp — Monthly Report</h1>
         </div>
         <div style="padding:32px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
           <h2 style="margin:0 0 4px">${monthName} Report</h2>

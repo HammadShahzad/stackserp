@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 
 export const metadata: Metadata = {
-  title: "BlogForge - AI-Powered Content Marketing",
+  title: "StackSerp - AI-Powered Content Marketing",
   description:
     "Automate your content marketing with AI. Research, generate, publish, and promote SEO-optimized blog posts for multiple websites.",
   icons: {

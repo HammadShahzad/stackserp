@@ -196,7 +196,7 @@ export default async function PublicBlogListPage({ params }: Props) {
             </a>{" "}
             · Powered by{" "}
             <a href="/" className="hover:text-primary">
-              BlogForge
+              StackSerp
             </a>
           </p>
         </div>

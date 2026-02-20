@@ -71,8 +71,8 @@ export async function POST(
         return NextResponse.json({ error: "siteUrl and pluginApiKey are required" }, { status: 400 });
       }
       try {
-        const res = await fetch(`${cleanUrl}/wp-json/blogforge/v1/status`, {
-          headers: { "X-BlogForge-Key": pluginApiKey },
+        const res = await fetch(`${cleanUrl}/wp-json/stackserp/v1/status`, {
+          headers: { "X-StackSerp-Key": pluginApiKey },
           signal: AbortSignal.timeout(10000),
         });
         if (res.ok) {
