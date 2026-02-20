@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateJSON } from "@/lib/ai/gemini";
 
 export interface SuggestedLink {
   keyword: string;
@@ -69,11 +69,7 @@ async function generateLinkPairsWithGemini(
   pagesContext: string,
   existingKeywords: string[]
 ): Promise<{ links: SuggestedLink[]; status: "ok" | "failed" }> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return { links: [], status: "failed" };
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  if (!process.env.GOOGLE_AI_API_KEY) return { links: [], status: "failed" };
 
   const existingList =
     existingKeywords.length > 0
@@ -91,25 +87,23 @@ For each important page/feature/topic on this website, create a keyword that:
 2. Accurately describes what that page is about
 3. Is different from existing keywords listed above
 
-Return ONLY valid JSON array, no markdown:
+Generate 15-25 high-value internal link pairs. Return a JSON array:
 [
   {
     "keyword": "the keyword phrase",
     "url": "https://full-url-to-page",
     "reason": "one sentence why this link is valuable for SEO"
   }
-]
-
-Generate 15-25 high-value internal link pairs. If no page list was provided, use common page patterns for this type of website.`;
+]`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return { links: [], status: "failed" };
-    const links = JSON.parse(jsonMatch[0]) as SuggestedLink[];
-    return { links, status: links.length > 0 ? "ok" : "failed" };
-  } catch {
+    const links = await generateJSON<SuggestedLink[]>(
+      prompt,
+      "You are an SEO internal linking expert. Return a JSON array only."
+    );
+    return { links: Array.isArray(links) ? links : [], status: Array.isArray(links) && links.length > 0 ? "ok" : "failed" };
+  } catch (err) {
+    console.error("[Links Gemini error]", err);
     return { links: [], status: "failed" };
   }
 }

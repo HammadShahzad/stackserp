@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateJSON } from "@/lib/ai/gemini";
 
 interface ClusterData {
   pillarKeyword: string;
@@ -76,11 +76,7 @@ async function generateClustersWithGemini(
   existingKeywords: string[],
   perplexityResearch: string
 ): Promise<{ clusters: ClusterData[]; status: "ok" | "failed" }> {
-  const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return { clusters: [], status: "failed" };
-
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  if (!process.env.GOOGLE_AI_API_KEY) return { clusters: [], status: "failed" };
 
   const existingSection =
     existingKeywords.length > 0
@@ -102,38 +98,38 @@ BUSINESS DETAILS:
 - Tone: ${website.tone}
 ${researchSection}${existingSection}
 
-Generate 5 topic clusters that are SPECIFICALLY tailored to "${website.brandName}" and what this business actually does. 
+Generate 5 topic clusters SPECIFICALLY tailored to "${website.brandName}" and what this business actually does.
 
 Rules:
 - Each pillar keyword must be a real topic this specific business should rank for
 - Supporting keywords must be realistic long-tail searches their customers actually make
 - Do NOT generate generic SEO topics — everything must be specific to this brand's niche
 - If existing keywords are provided, prefer grouping those into clusters over inventing new ones
-- Pillar keywords should have high search volume potential (100-10k/month)
-- Supporting keywords should be long-tail (3-6 words, lower competition)
+- Pillar keywords: high search volume potential (100-10k/month)
+- Supporting keywords: long-tail, 3-6 words, lower competition
 
-Return ONLY valid JSON, no markdown:
+Return valid JSON only:
 {
   "clusters": [
     {
       "pillarKeyword": "specific pillar keyword for this business",
       "name": "Cluster Theme Name",
-      "supportingKeywords": ["long-tail keyword 1", "long-tail keyword 2", "..."],
+      "supportingKeywords": ["long-tail keyword 1", "long-tail keyword 2"],
       "rationale": "Why this cluster matters for ${website.brandName}'s SEO strategy"
     }
   ]
 }`;
 
   try {
-    const result = await model.generateContent(prompt);
-    const text = result.response.text().trim();
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { clusters: [], status: "failed" as const };
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = await generateJSON<{ clusters: ClusterData[] }>(
+      prompt,
+      "You are a senior SEO strategist. Return valid JSON only."
+    );
     const clusters = parsed.clusters ?? [];
-    return { clusters, status: clusters.length > 0 ? "ok" as const : "failed" as const };
-  } catch {
-    return { clusters: [], status: "failed" as const };
+    return { clusters, status: clusters.length > 0 ? "ok" : "failed" };
+  } catch (err) {
+    console.error("[Clusters Gemini error]", err);
+    return { clusters: [], status: "failed" };
   }
 }
 

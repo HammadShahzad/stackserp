@@ -173,8 +173,8 @@ function ResultStatusBanner({ steps }: { steps: StepStatus }) {
       <div>
         <p className="font-medium text-red-800">AI generation failed</p>
         <p className="text-red-700 text-xs mt-0.5">
-          GOOGLE_AI_API_KEY may not be set, or Gemini returned an error.
-          Check your environment variables.
+          Gemini 2.5 Pro returned an error — this is usually temporary. Try again in a moment.
+          If it keeps failing, check that GOOGLE_AI_API_KEY is valid in your environment.
         </p>
       </div>
     </div>

@@ -167,8 +167,8 @@ function ResultStatusBanner({ steps }: { steps: StepStatus }) {
         <p className="font-medium text-red-800">AI generation failed</p>
         <p className="text-red-700 text-xs mt-0.5">
           {steps.gemini === "failed"
-            ? "GOOGLE_AI_API_KEY may not be configured or Gemini returned an error"
-            : "Both Perplexity and Gemini failed — check your API keys in Settings"}
+            ? "Gemini 2.5 Pro returned an error — this is usually temporary. Try again in a moment. If it keeps failing, verify GOOGLE_AI_API_KEY is valid."
+            : "Both Perplexity and Gemini failed — check your API keys"}
         </p>
       </div>
     </div>
