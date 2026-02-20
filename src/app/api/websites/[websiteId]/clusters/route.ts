@@ -57,7 +57,54 @@ export async function POST(
 
     const body = await req.json();
 
-    // ─── Preview: research + generate cluster without saving ─────
+    // ─── AI Generate: crawl website → research → build clusters ───
+    if (body.generate) {
+      const website = await prisma.website.findUnique({
+        where: { id: websiteId },
+        select: {
+          brandUrl: true,
+          brandName: true,
+          niche: true,
+          description: true,
+          targetAudience: true,
+        },
+      });
+      if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
+
+      if (!website.brandUrl && !website.niche) {
+        return NextResponse.json({ error: "Set your website URL and niche in settings first" }, { status: 400 });
+      }
+
+      const existingKws = await prisma.blogKeyword.findMany({
+        where: { websiteId },
+        select: { keyword: true },
+        take: 60,
+      });
+
+      const seedTopic = website.niche || "general";
+
+      const preview = await generateClusterPreview(
+        seedTopic,
+        website,
+        existingKws.map(k => k.keyword),
+      );
+
+      const suggestions = [{
+        pillarKeyword: preview.keywords.find(k => k.role === "pillar")?.keyword || seedTopic,
+        name: preview.pillarTitle,
+        supportingKeywords: preview.keywords
+          .filter(k => k.role === "supporting")
+          .map(k => k.keyword),
+        rationale: preview.description,
+      }];
+
+      return NextResponse.json({
+        suggestions,
+        steps: { crawl: "ok", gemini: "ok" },
+      });
+    }
+
+    // ─── Preview with seed topic: research + generate cluster ─────
     if (body.preview && body.seedTopic) {
       const website = await prisma.website.findUnique({
         where: { id: websiteId },
@@ -86,7 +133,26 @@ export async function POST(
       return NextResponse.json({ preview: true, ...preview });
     }
 
-    // ─── Save: create cluster + queue selected keywords ─────────
+    // ─── Save AI-generated clusters ──────────────────────────────
+    if (body.saveClusters && Array.isArray(body.clusters) && body.clusters.length > 0) {
+      const results = [];
+      for (const c of body.clusters) {
+        const cluster = await prisma.topicCluster.create({
+          data: {
+            websiteId,
+            name: c.name || c.pillarKeyword,
+            pillarKeyword: c.pillarKeyword,
+            supportingKeywords: c.supportingKeywords || [],
+            status: "PLANNING",
+            totalPosts: 1 + (c.supportingKeywords?.length || 0),
+          },
+        });
+        results.push(cluster);
+      }
+      return NextResponse.json({ saved: results.length }, { status: 201 });
+    }
+
+    // ─── Save with selected keywords (from preview flow) ─────────
     if (body.seedTopic && Array.isArray(body.selectedKeywords) && body.selectedKeywords.length > 0) {
       const selectedKeywords = body.selectedKeywords as ClusterKeyword[];
       const pillar = selectedKeywords.find(k => k.role === "pillar");
@@ -104,7 +170,6 @@ export async function POST(
         },
       });
 
-      // Create keywords in the generation queue
       let created = 0;
       for (const kw of selectedKeywords) {
         const exists = await prisma.blogKeyword.findFirst({
@@ -138,6 +203,21 @@ export async function POST(
       }, { status: 201 });
     }
 
+    // ─── Add manual cluster ──────────────────────────────────────
+    if (body.name && body.pillarKeyword) {
+      const cluster = await prisma.topicCluster.create({
+        data: {
+          websiteId,
+          name: body.name,
+          pillarKeyword: body.pillarKeyword,
+          supportingKeywords: Array.isArray(body.supportingKeywords) ? body.supportingKeywords : [],
+          status: "PLANNING",
+          totalPosts: 1 + (Array.isArray(body.supportingKeywords) ? body.supportingKeywords.length : 0),
+        },
+      });
+      return NextResponse.json(cluster, { status: 201 });
+    }
+
     // ─── Update cluster status ──────────────────────────────────
     if (body.updateStatus && body.clusterId) {
       const updated = await prisma.topicCluster.update({
@@ -147,7 +227,7 @@ export async function POST(
       return NextResponse.json(updated);
     }
 
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   } catch (error) {
     console.error("Error in cluster POST:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
