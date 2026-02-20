@@ -35,9 +35,11 @@ import {
   ChevronUp,
   CheckCheck,
   X,
+  CheckCircle2,
+  AlertCircle,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AiLoading, AI_STEPS } from "@/components/ui/ai-loading";
 
 interface TopicCluster {
   id: string;
@@ -55,12 +57,131 @@ interface SuggestedCluster {
   rationale: string;
 }
 
+interface StepStatus {
+  perplexity: "ok" | "skipped" | "failed";
+  gemini: "ok" | "failed";
+}
+
 const STATUS_COLORS: Record<string, string> = {
   PLANNING: "bg-muted text-muted-foreground",
   IN_PROGRESS: "bg-blue-50 text-blue-700 border-blue-200",
   COMPLETED: "bg-green-50 text-green-700 border-green-200",
 };
 
+// ── Modal loading dialog — impossible to miss ────────────────────────────────
+function AiGeneratingDialog({ open }: { open: boolean }) {
+  const [stepIdx, setStepIdx] = useState(0);
+  const steps = [
+    { icon: Globe,    label: "Visiting your website…",            detail: "Perplexity is reading your pages" },
+    { icon: Globe,    label: "Identifying core topics…",          detail: "Analyzing what your business offers" },
+    { icon: Globe,    label: "Mapping competitor gaps…",          detail: "Finding what your customers search for" },
+    { icon: Sparkles, label: "Designing cluster structure…",      detail: "Gemini is grouping topics into pillars" },
+    { icon: Sparkles, label: "Writing supporting keywords…",      detail: "Generating long-tail keyword variations" },
+    { icon: Sparkles, label: "Almost done…",                      detail: "Finalizing your topic clusters" },
+  ];
+
+  useEffect(() => {
+    if (!open) { setStepIdx(0); return; }
+    const t = setInterval(() => setStepIdx((i) => (i + 1) % steps.length), 3200);
+    return () => clearInterval(t);
+  }, [open, steps.length]);
+
+  const current = steps[stepIdx];
+  const Icon = current.icon;
+
+  return (
+    <Dialog open={open}>
+      <DialogContent
+        className="max-w-sm text-center"
+        onInteractOutside={(e) => e.preventDefault()}
+        showCloseButton={false}
+      >
+        <DialogHeader>
+          <DialogTitle className="flex flex-col items-center gap-4 pt-2">
+            <div className="relative flex items-center justify-center">
+              <span className="absolute inline-flex h-16 w-16 rounded-full bg-primary/20 animate-ping" />
+              <span className="relative flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 ring-2 ring-primary/30">
+                <Icon className="h-6 w-6 text-primary animate-pulse" />
+              </span>
+            </div>
+            <span className="text-base font-semibold">{current.label}</span>
+          </DialogTitle>
+          <DialogDescription className="text-sm text-muted-foreground mt-1">
+            {current.detail}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex items-center justify-center gap-2 py-2">
+          {steps.map((_, i) => (
+            <span
+              key={i}
+              className={`inline-block rounded-full transition-all duration-500 ${
+                i === stepIdx
+                  ? "w-5 h-1.5 bg-primary"
+                  : "w-1.5 h-1.5 bg-muted-foreground/30"
+              }`}
+            />
+          ))}
+        </div>
+
+        <p className="text-xs text-muted-foreground pb-2">
+          This usually takes 20–40 seconds — Perplexity + Gemini are working
+        </p>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Status banner shown inside the review dialog ─────────────────────────────
+function ResultStatusBanner({ steps }: { steps: StepStatus }) {
+  if (steps.perplexity === "ok" && steps.gemini === "ok") {
+    return (
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-sm">
+        <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-medium text-green-800">Research completed successfully</p>
+          <p className="text-green-700 text-xs mt-0.5">
+            Perplexity researched your website · Gemini designed the clusters below
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (steps.perplexity !== "ok" && steps.gemini === "ok") {
+    return (
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 border border-amber-200 text-sm">
+        <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-medium text-amber-800">
+            Perplexity {steps.perplexity === "skipped" ? "not configured" : "couldn't reach your site"}
+          </p>
+          <p className="text-amber-700 text-xs mt-0.5">
+            Gemini used your brand description instead —{" "}
+            {steps.perplexity === "skipped"
+              ? "add PERPLEXITY_API_KEY in your .env for better accuracy"
+              : "clusters may be less precise than usual"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-sm">
+      <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+      <div>
+        <p className="font-medium text-red-800">AI generation failed</p>
+        <p className="text-red-700 text-xs mt-0.5">
+          GOOGLE_AI_API_KEY may not be set, or Gemini returned an error.
+          Check your environment variables.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────────────────
 export default function ClustersPage() {
   const params = useParams();
   const websiteId = params.websiteId as string;
@@ -73,9 +194,8 @@ export default function ClustersPage() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedCluster[]>([]);
-  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(
-    new Set()
-  );
+  const [stepStatus, setStepStatus] = useState<StepStatus | null>(null);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
   const [newCluster, setNewCluster] = useState({
     name: "",
     pillarKeyword: "",
@@ -99,9 +219,7 @@ export default function ClustersPage() {
 
   const handleAIGenerate = async () => {
     setIsGenerating(true);
-    toast.info("Researching your website with Perplexity + Gemini…", {
-      duration: 4000,
-    });
+    setStepStatus(null);
     try {
       const res = await fetch(`/api/websites/${websiteId}/clusters`, {
         method: "POST",
@@ -110,21 +228,25 @@ export default function ClustersPage() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Generation failed");
+      if (!res.ok) {
+        toast.error(data.error || "Generation failed");
+        return;
+      }
+
+      setStepStatus(data.steps ?? null);
+
       if (!data.suggestions?.length) {
-        toast.warning("No clusters generated — check your website settings");
+        setSuggestions([]);
+        setSelectedSuggestions(new Set());
+        setShowReviewDialog(true);
         return;
       }
 
       setSuggestions(data.suggestions);
-      setSelectedSuggestions(
-        new Set(data.suggestions.map((_: SuggestedCluster, i: number) => i))
-      );
+      setSelectedSuggestions(new Set(data.suggestions.map((_: SuggestedCluster, i: number) => i)));
       setShowReviewDialog(true);
-    } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Generation failed"
-      );
+    } catch {
+      toast.error("Network error — please try again");
     } finally {
       setIsGenerating(false);
     }
@@ -132,10 +254,7 @@ export default function ClustersPage() {
 
   const handleSaveSuggestions = async () => {
     const toSave = suggestions.filter((_, i) => selectedSuggestions.has(i));
-    if (!toSave.length) {
-      toast.warning("No clusters selected");
-      return;
-    }
+    if (!toSave.length) { toast.warning("No clusters selected"); return; }
 
     setIsSaving(true);
     try {
@@ -146,7 +265,6 @@ export default function ClustersPage() {
       });
 
       if (!res.ok) throw new Error("Save failed");
-
       toast.success(`Saved ${toSave.length} topic clusters`);
       setShowReviewDialog(false);
       setSuggestions([]);
@@ -161,8 +279,7 @@ export default function ClustersPage() {
   const toggleSuggestion = (idx: number) => {
     setSelectedSuggestions((prev) => {
       const next = new Set(prev);
-      if (next.has(idx)) next.delete(idx);
-      else next.add(idx);
+      if (next.has(idx)) next.delete(idx); else next.add(idx);
       return next;
     });
   };
@@ -172,9 +289,7 @@ export default function ClustersPage() {
     setIsAdding(true);
     try {
       const keywords = newCluster.supportingKeywords
-        .split(",")
-        .map((k) => k.trim())
-        .filter(Boolean);
+        .split(",").map((k) => k.trim()).filter(Boolean);
 
       const res = await fetch(`/api/websites/${websiteId}/clusters`, {
         method: "POST",
@@ -203,10 +318,7 @@ export default function ClustersPage() {
 
   const handleDelete = async (clusterId: string) => {
     try {
-      const res = await fetch(
-        `/api/websites/${websiteId}/clusters?id=${clusterId}`,
-        { method: "DELETE" }
-      );
+      const res = await fetch(`/api/websites/${websiteId}/clusters?id=${clusterId}`, { method: "DELETE" });
       if (res.ok) {
         toast.success("Cluster deleted");
         setClusters((prev) => prev.filter((c) => c.id !== clusterId));
@@ -226,6 +338,10 @@ export default function ClustersPage() {
 
   return (
     <div className="space-y-6">
+      {/* Modal loading — visible regardless of scroll position */}
+      <AiGeneratingDialog open={isGenerating} />
+
+      {/* Header */}
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
@@ -247,66 +363,32 @@ export default function ClustersPage() {
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Add Topic Cluster</DialogTitle>
-                <DialogDescription>
-                  Define a pillar topic and its supporting keywords
-                </DialogDescription>
+                <DialogDescription>Define a pillar topic and its supporting keywords</DialogDescription>
               </DialogHeader>
               <div className="space-y-4 pt-2">
                 <div className="space-y-2">
                   <Label>Cluster Name</Label>
-                  <Input
-                    placeholder="e.g., Invoicing & Billing"
+                  <Input placeholder="e.g., Invoicing & Billing"
                     value={newCluster.name}
-                    onChange={(e) =>
-                      setNewCluster((p) => ({ ...p, name: e.target.value }))
-                    }
-                  />
+                    onChange={(e) => setNewCluster((p) => ({ ...p, name: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Pillar Keyword</Label>
-                  <Input
-                    placeholder="e.g., invoicing software"
+                  <Input placeholder="e.g., invoicing software"
                     value={newCluster.pillarKeyword}
-                    onChange={(e) =>
-                      setNewCluster((p) => ({
-                        ...p,
-                        pillarKeyword: e.target.value,
-                      }))
-                    }
-                  />
+                    onChange={(e) => setNewCluster((p) => ({ ...p, pillarKeyword: e.target.value }))} />
                 </div>
                 <div className="space-y-2">
                   <Label>Supporting Keywords</Label>
-                  <Input
-                    placeholder="keyword1, keyword2, keyword3"
+                  <Input placeholder="keyword1, keyword2, keyword3"
                     value={newCluster.supportingKeywords}
-                    onChange={(e) =>
-                      setNewCluster((p) => ({
-                        ...p,
-                        supportingKeywords: e.target.value,
-                      }))
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Comma-separated list of related long-tail keywords
-                  </p>
+                    onChange={(e) => setNewCluster((p) => ({ ...p, supportingKeywords: e.target.value }))} />
+                  <p className="text-xs text-muted-foreground">Comma-separated list</p>
                 </div>
                 <div className="flex justify-end gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowAddDialog(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={handleAddManual}
-                    disabled={
-                      isAdding || !newCluster.name || !newCluster.pillarKeyword
-                    }
-                  >
-                    {isAdding && (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    )}
+                  <Button variant="outline" onClick={() => setShowAddDialog(false)}>Cancel</Button>
+                  <Button onClick={handleAddManual} disabled={isAdding || !newCluster.name || !newCluster.pillarKeyword}>
+                    {isAdding && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                     Add Cluster
                   </Button>
                 </div>
@@ -315,20 +397,11 @@ export default function ClustersPage() {
           </Dialog>
 
           <Button onClick={handleAIGenerate} disabled={isGenerating}>
-            {isGenerating ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Sparkles className="mr-2 h-4 w-4" />
-            )}
+            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
             {isGenerating ? "Researching…" : "Generate with AI"}
           </Button>
         </div>
       </div>
-
-      {/* AI Loading State */}
-      {isGenerating && (
-        <AiLoading steps={[...AI_STEPS.clusters]} />
-      )}
 
       {/* Info card */}
       <Card className="bg-primary/5 border-primary/10">
@@ -337,41 +410,31 @@ export default function ClustersPage() {
           <div className="text-sm">
             <p className="font-medium">What are topic clusters?</p>
             <p className="text-muted-foreground mt-0.5">
-              A pillar page covers a broad topic, while supporting pages cover
-              related subtopics. Internal linking between them tells Google your
-              site is an authority on the subject — boosting rankings for all
-              pages in the cluster.{" "}
+              A pillar page covers a broad topic, while supporting pages cover related subtopics.
+              Internal linking between them signals authority to Google.{" "}
               <span className="text-foreground font-medium">
                 AI uses Perplexity to research your actual website
               </span>{" "}
-              before generating clusters — so results are specific to your
-              business, not generic templates.
+              before generating — so results are specific to your business.
             </p>
           </div>
         </CardContent>
       </Card>
 
+      {/* Empty state or cluster list */}
       {clusters.length === 0 ? (
         <Card>
-          <CardContent className="py-6">
-            {isGenerating ? (
-              <AiLoading steps={[...AI_STEPS.clusters]} />
-            ) : (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
-                <Network className="h-12 w-12 text-muted-foreground/40 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
-                  No topic clusters yet
-                </h3>
-                <p className="text-muted-foreground text-sm max-w-sm mb-6">
-                  AI researches your actual website with Perplexity then generates
-                  clusters specific to your business — not generic templates.
-                </p>
-                <Button onClick={handleAIGenerate}>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate with AI
-                </Button>
-              </div>
-            )}
+          <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+            <Network className="h-12 w-12 text-muted-foreground/40 mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No topic clusters yet</h3>
+            <p className="text-muted-foreground text-sm max-w-sm mb-6">
+              AI researches your actual website with Perplexity then generates clusters
+              specific to your business — not generic templates.
+            </p>
+            <Button onClick={handleAIGenerate} disabled={isGenerating}>
+              <Sparkles className="mr-2 h-4 w-4" />
+              Generate with AI
+            </Button>
           </CardContent>
         </Card>
       ) : (
@@ -385,49 +448,28 @@ export default function ClustersPage() {
                       <Network className="h-4 w-4 text-primary" />
                     </div>
                     <div>
-                      <CardTitle className="text-base">
-                        {cluster.name}
-                      </CardTitle>
+                      <CardTitle className="text-base">{cluster.name}</CardTitle>
                       <CardDescription className="flex items-center gap-1.5 mt-0.5">
                         <KeyRound className="h-3 w-3" />
                         Pillar:{" "}
-                        <span className="font-medium text-foreground">
-                          {cluster.pillarKeyword}
-                        </span>
+                        <span className="font-medium text-foreground">{cluster.pillarKeyword}</span>
                       </CardDescription>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      className={`text-xs ${STATUS_COLORS[cluster.status] || ""}`}
-                    >
-                      {cluster.status.charAt(0) +
-                        cluster.status.slice(1).toLowerCase()}
+                    <Badge variant="outline" className={`text-xs ${STATUS_COLORS[cluster.status] || ""}`}>
+                      {cluster.status.charAt(0) + cluster.status.slice(1).toLowerCase()}
                     </Badge>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <Button variant="ghost" size="icon"
                       className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(cluster.id)}
-                    >
+                      onClick={() => handleDelete(cluster.id)}>
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() =>
-                        setExpandedId(
-                          expandedId === cluster.id ? null : cluster.id
-                        )
-                      }
-                    >
-                      {expandedId === cluster.id ? (
-                        <ChevronUp className="h-4 w-4" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4" />
-                      )}
+                    <Button variant="ghost" size="icon" className="h-7 w-7"
+                      onClick={() => setExpandedId(expandedId === cluster.id ? null : cluster.id)}>
+                      {expandedId === cluster.id
+                        ? <ChevronUp className="h-4 w-4" />
+                        : <ChevronDown className="h-4 w-4" />}
                     </Button>
                   </div>
                 </div>
@@ -441,9 +483,7 @@ export default function ClustersPage() {
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {cluster.supportingKeywords.map((kw) => (
-                        <Badge key={kw} variant="secondary" className="text-xs">
-                          {kw}
-                        </Badge>
+                        <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
                       ))}
                     </div>
                   </div>
@@ -458,16 +498,12 @@ export default function ClustersPage() {
         <div className="flex justify-center">
           <p className="text-xs text-muted-foreground">
             {clusters.length} cluster{clusters.length !== 1 ? "s" : ""} ·{" "}
-            {clusters.reduce(
-              (acc, c) => acc + c.supportingKeywords.length,
-              0
-            )}{" "}
-            supporting keywords total
+            {clusters.reduce((acc, c) => acc + c.supportingKeywords.length, 0)} supporting keywords total
           </p>
         </div>
       )}
 
-      {/* AI Review Dialog */}
+      {/* Review Dialog — opens after generation with status banner */}
       <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
         <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
           <DialogHeader>
@@ -476,116 +512,92 @@ export default function ClustersPage() {
               AI-Generated Topic Clusters
             </DialogTitle>
             <DialogDescription>
-              {suggestions.length} clusters generated based on your actual
-              website. Deselect any you don&apos;t want, then save.
+              {suggestions.length > 0
+                ? `${suggestions.length} clusters generated. Deselect any you don't want, then save.`
+                : "The AI couldn't generate clusters — see details below."}
             </DialogDescription>
           </DialogHeader>
 
-          <div className="flex items-center gap-3 px-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 h-7 text-xs"
-              onClick={() =>
-                setSelectedSuggestions(
-                  new Set(suggestions.map((_, i) => i))
-                )
-              }
-            >
-              <CheckCheck className="h-3.5 w-3.5" />
-              Select all
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="gap-1.5 h-7 text-xs"
-              onClick={() => setSelectedSuggestions(new Set())}
-            >
-              <X className="h-3.5 w-3.5" />
-              Deselect all
-            </Button>
-            <span className="text-xs text-muted-foreground ml-auto">
-              {selectedSuggestions.size} selected
-            </span>
-          </div>
+          {/* Always show what happened */}
+          {stepStatus && <ResultStatusBanner steps={stepStatus} />}
 
-          <Separator />
+          {suggestions.length > 0 && (
+            <>
+              <div className="flex items-center gap-3 px-1">
+                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs"
+                  onClick={() => setSelectedSuggestions(new Set(suggestions.map((_, i) => i)))}>
+                  <CheckCheck className="h-3.5 w-3.5" />
+                  Select all
+                </Button>
+                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs"
+                  onClick={() => setSelectedSuggestions(new Set())}>
+                  <X className="h-3.5 w-3.5" />
+                  Deselect all
+                </Button>
+                <span className="text-xs text-muted-foreground ml-auto">{selectedSuggestions.size} selected</span>
+              </div>
 
-          <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-            {suggestions.map((s, i) => (
-              <div
-                key={i}
-                className={`rounded-lg border p-4 cursor-pointer transition-colors ${
-                  selectedSuggestions.has(i)
-                    ? "bg-primary/5 border-primary/20"
-                    : "border-muted hover:bg-muted/30"
-                }`}
-                onClick={() => toggleSuggestion(i)}
-              >
-                <div className="flex items-start gap-3">
-                  <Checkbox
-                    checked={selectedSuggestions.has(i)}
-                    onCheckedChange={() => toggleSuggestion(i)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="mt-0.5 shrink-0"
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap mb-1">
-                      <span className="font-medium text-sm">{s.name}</span>
-                      <Badge variant="outline" className="font-mono text-xs">
-                        <KeyRound className="h-2.5 w-2.5 mr-1" />
-                        {s.pillarKeyword}
-                      </Badge>
-                    </div>
-                    {s.rationale && (
-                      <p className="text-xs text-muted-foreground mb-2">
-                        {s.rationale}
-                      </p>
-                    )}
-                    <div className="flex flex-wrap gap-1">
-                      {s.supportingKeywords.slice(0, 6).map((kw) => (
-                        <Badge
-                          key={kw}
-                          variant="secondary"
-                          className="text-xs"
-                        >
-                          {kw}
-                        </Badge>
-                      ))}
-                      {s.supportingKeywords.length > 6 && (
-                        <Badge variant="secondary" className="text-xs">
-                          +{s.supportingKeywords.length - 6} more
-                        </Badge>
-                      )}
+              <Separator />
+
+              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+                {suggestions.map((s, i) => (
+                  <div key={i}
+                    className={`rounded-lg border p-4 cursor-pointer transition-colors ${
+                      selectedSuggestions.has(i)
+                        ? "bg-primary/5 border-primary/20"
+                        : "border-muted hover:bg-muted/30"
+                    }`}
+                    onClick={() => toggleSuggestion(i)}
+                  >
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        checked={selectedSuggestions.has(i)}
+                        onCheckedChange={() => toggleSuggestion(i)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="mt-0.5 shrink-0"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span className="font-medium text-sm">{s.name}</span>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            <KeyRound className="h-2.5 w-2.5 mr-1" />
+                            {s.pillarKeyword}
+                          </Badge>
+                        </div>
+                        {s.rationale && (
+                          <p className="text-xs text-muted-foreground mb-2">{s.rationale}</p>
+                        )}
+                        <div className="flex flex-wrap gap-1">
+                          {s.supportingKeywords.slice(0, 6).map((kw) => (
+                            <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
+                          ))}
+                          {s.supportingKeywords.length > 6 && (
+                            <Badge variant="secondary" className="text-xs">
+                              +{s.supportingKeywords.length - 6} more
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </>
+          )}
 
           <Separator />
 
           <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowReviewDialog(false)}
-            >
-              Cancel
+            <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
+              {suggestions.length === 0 ? "Close" : "Cancel"}
             </Button>
-            <Button
-              onClick={handleSaveSuggestions}
-              disabled={isSaving || selectedSuggestions.size === 0}
-              className="gap-2"
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Plus className="h-4 w-4" />
-              )}
-              Save {selectedSuggestions.size} cluster
-              {selectedSuggestions.size !== 1 ? "s" : ""}
-            </Button>
+            {suggestions.length > 0 && (
+              <Button onClick={handleSaveSuggestions}
+                disabled={isSaving || selectedSuggestions.size === 0} className="gap-2">
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Save {selectedSuggestions.size} cluster{selectedSuggestions.size !== 1 ? "s" : ""}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

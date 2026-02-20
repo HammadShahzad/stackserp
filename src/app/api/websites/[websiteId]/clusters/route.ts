@@ -15,9 +15,9 @@ async function researchWebsiteWithPerplexity(
   brandUrl: string,
   brandName: string,
   niche: string
-): Promise<string> {
+): Promise<{ content: string; status: "ok" | "skipped" | "failed" }> {
   const apiKey = process.env.PERPLEXITY_API_KEY;
-  if (!apiKey) return "";
+  if (!apiKey) return { content: "", status: "skipped" };
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -54,11 +54,12 @@ Be specific to THIS business, not generic. Only mention topics that are directly
       signal: AbortSignal.timeout(25000),
     });
 
-    if (!response.ok) return "";
+    if (!response.ok) return { content: "", status: "failed" };
     const data = await response.json();
-    return data.choices?.[0]?.message?.content ?? "";
+    const content = data.choices?.[0]?.message?.content ?? "";
+    return { content, status: content ? "ok" : "failed" };
   } catch {
-    return "";
+    return { content: "", status: "failed" };
   }
 }
 
@@ -74,9 +75,9 @@ async function generateClustersWithGemini(
   },
   existingKeywords: string[],
   perplexityResearch: string
-): Promise<ClusterData[]> {
+): Promise<{ clusters: ClusterData[]; status: "ok" | "failed" }> {
   const apiKey = process.env.GOOGLE_AI_API_KEY;
-  if (!apiKey) return [];
+  if (!apiKey) return { clusters: [], status: "failed" };
 
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -127,11 +128,12 @@ Return ONLY valid JSON, no markdown:
     const result = await model.generateContent(prompt);
     const text = result.response.text().trim();
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return [];
+    if (!jsonMatch) return { clusters: [], status: "failed" as const };
     const parsed = JSON.parse(jsonMatch[0]);
-    return parsed.clusters ?? [];
+    const clusters = parsed.clusters ?? [];
+    return { clusters, status: clusters.length > 0 ? "ok" as const : "failed" as const };
   } catch {
-    return [];
+    return { clusters: [], status: "failed" as const };
   }
 }
 
@@ -212,7 +214,7 @@ export async function POST(
       );
 
       // Step 2: Generate tailored clusters with Gemini
-      const suggestions = await generateClustersWithGemini(
+      const geminiResult = await generateClustersWithGemini(
         {
           name: website.name,
           brandName: website.brandName,
@@ -223,11 +225,17 @@ export async function POST(
           tone: website.tone,
         },
         existingKeywords,
-        research
+        research.content
       );
 
-      // Return suggestions for preview — caller decides what to save
-      return NextResponse.json({ suggestions });
+      // Return suggestions + diagnostic info for review
+      return NextResponse.json({
+        suggestions: geminiResult.clusters,
+        steps: {
+          perplexity: research.status,
+          gemini: geminiResult.status,
+        },
+      });
     }
 
     // --- Bulk save from review dialog ---
