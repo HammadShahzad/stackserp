@@ -164,7 +164,24 @@ export default async function DashboardOverview() {
             <Card key={website.id} className="hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">{website.name}</CardTitle>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {website.faviconUrl ? (
+                      /* eslint-disable-next-line @next/next/no-img-element */
+                      <img
+                        src={website.faviconUrl}
+                        alt={website.name}
+                        className="h-8 w-8 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white text-sm font-bold"
+                        style={{ backgroundColor: website.primaryColor || "#4F46E5" }}
+                      >
+                        {website.name[0].toUpperCase()}
+                      </div>
+                    )}
+                    <CardTitle className="text-base truncate">{website.name}</CardTitle>
+                  </div>
                   <Badge
                     variant={website.status === "ACTIVE" ? "default" : "secondary"}
                   >
@@ -175,7 +192,7 @@ export default async function DashboardOverview() {
               </CardHeader>
               <CardContent>
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">
+                  <span className="text-sm text-muted-foreground line-clamp-1">
                     {website.niche}
                   </span>
                   <Button asChild variant="ghost" size="sm">

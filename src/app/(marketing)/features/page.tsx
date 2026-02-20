@@ -79,16 +79,16 @@ const features = [
   },
   {
     icon: FileText,
-    title: "Hosted Blog",
-    subtitle: "Publish without a CMS",
+    title: "Direct CMS Publishing",
+    subtitle: "Publish straight to your blog",
     description:
-      "Don't have a blog yet? We'll host one for you. Choose a subdomain or connect your custom domain. Pick from professionally designed themes and start publishing immediately — no WordPress or server setup required.",
+      "StackSerp generates content and pushes it directly to your existing blog or CMS. No extra hosting needed. Your posts go live on your own domain with full SEO optimization, featured images, and proper formatting.",
     steps: [
-      "Free subdomain (yoursite.stackserp.com)",
-      "Custom domain support (CNAME)",
-      "Professionally designed themes",
-      "Automatic sitemap & RSS feed",
-      "Lightning-fast CDN delivery",
+      "One-click publish to WordPress",
+      "Webhook support for any CMS",
+      "Automatic SEO meta tags",
+      "Featured image generation",
+      "Proper heading hierarchy & formatting",
     ],
   },
   {

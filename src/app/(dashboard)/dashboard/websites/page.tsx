@@ -109,12 +109,21 @@ export default async function WebsitesPage() {
                   {/* Header */}
                   <div className="flex items-start justify-between gap-2 mb-4">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div
-                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-base font-bold shadow-sm"
-                        style={{ backgroundColor: color }}
-                      >
-                        {website.name[0].toUpperCase()}
-                      </div>
+                      {website.faviconUrl ? (
+                        /* eslint-disable-next-line @next/next/no-img-element */
+                        <img
+                          src={website.faviconUrl}
+                          alt={website.name}
+                          className="h-11 w-11 shrink-0 rounded-xl object-cover shadow-sm"
+                        />
+                      ) : (
+                        <div
+                          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white text-base font-bold shadow-sm"
+                          style={{ backgroundColor: color }}
+                        >
+                          {website.name[0].toUpperCase()}
+                        </div>
+                      )}
                       <div className="min-w-0">
                         <h3 className="font-semibold text-base truncate">
                           {website.name}

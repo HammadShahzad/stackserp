@@ -37,6 +37,7 @@ export async function getCurrentOrganization() {
               brandName: true,
               brandUrl: true,
               primaryColor: true,
+              faviconUrl: true,
               createdAt: true,
               organizationId: true,
             },

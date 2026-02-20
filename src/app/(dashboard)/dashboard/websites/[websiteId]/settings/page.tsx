@@ -52,7 +52,6 @@ interface WebsiteData {
   indexNowKey: string | null;
   twitterApiKey: string | null;
   linkedinAccessToken: string | null;
-  customDomain: string | null;
 }
 
 export default function WebsiteSettingsPage() {
@@ -192,17 +191,6 @@ export default function WebsiteSettingsPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Custom Domain</Label>
-                <Input
-                  placeholder="blog.yourdomain.com"
-                  value={website.customDomain || ""}
-                  onChange={(e) => updateField("customDomain", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Set up a CNAME record pointing to our servers
-                </p>
-              </div>
-              <div className="space-y-2">
                 <Label>Niche / Industry</Label>
                 <Input
                   value={website.niche}
@@ -340,10 +328,9 @@ export default function WebsiteSettingsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="HOSTED">Hosted (We host your blog)</SelectItem>
                     <SelectItem value="API">API (You fetch via REST API)</SelectItem>
                     <SelectItem value="WEBHOOK">Webhook (Push to your CMS)</SelectItem>
-                    <SelectItem value="HYBRID">Hybrid (Hosted + API access)</SelectItem>
+                    <SelectItem value="WORDPRESS">WordPress (Plugin or App Password)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
