@@ -20,6 +20,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `${website.brandName} Blog - ${website.niche}`,
     description: `Expert advice and insights from ${website.brandName}. ${website.description}`,
+    icons: website.faviconUrl
+      ? { icon: website.faviconUrl, apple: website.faviconUrl }
+      : undefined,
     openGraph: {
       title: `${website.brandName} Blog`,
       description: website.description,

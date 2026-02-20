@@ -44,6 +44,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title,
     description,
+    icons: website.faviconUrl
+      ? { icon: website.faviconUrl, apple: website.faviconUrl }
+      : undefined,
     keywords: [
       ...(post.focusKeyword ? [post.focusKeyword] : []),
       ...(post.secondaryKeywords || []),
