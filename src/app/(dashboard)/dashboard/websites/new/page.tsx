@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -24,6 +24,10 @@ import {
   Sparkles,
   CheckCircle2,
   RefreshCw,
+  Search,
+  Brain,
+  FileText,
+  Eye,
 } from "lucide-react";
 import { AiLoading, AI_STEPS } from "@/components/ui/ai-loading";
 import Link from "next/link";
@@ -207,49 +211,59 @@ export default function NewWebsitePage() {
 
       {/* Step 1: Basic Info */}
       {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>
-              Enter your website name and domain — AI will handle the rest
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Website Name</Label>
-              <Input
-                id="name"
-                placeholder="e.g., InvoiceCave Blog"
-                value={formData.name}
-                onChange={(e) => updateField("name", e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                A display name for this website in your dashboard
-              </p>
-            </div>
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Basic Information</CardTitle>
+              <CardDescription>
+                Enter your website name and domain — AI will handle the rest
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Website Name</Label>
+                <Input
+                  id="name"
+                  placeholder="e.g., InvoiceCave Blog"
+                  value={formData.name}
+                  onChange={(e) => updateField("name", e.target.value)}
+                  disabled={isAnalyzing}
+                />
+                <p className="text-xs text-muted-foreground">
+                  A display name for this website in your dashboard
+                </p>
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="domain">Domain</Label>
-              <Input
-                id="domain"
-                placeholder="e.g., invoicecave.com"
-                value={formData.domain}
-                onChange={(e) => updateField("domain", e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Your website&apos;s domain name (without https://)
-              </p>
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="domain">Domain</Label>
+                <Input
+                  id="domain"
+                  placeholder="e.g., invoicecave.com"
+                  value={formData.domain}
+                  onChange={(e) => updateField("domain", e.target.value)}
+                  disabled={isAnalyzing}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your website&apos;s domain name (without https://)
+                </p>
+              </div>
 
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <Sparkles className="h-4 w-4 text-primary shrink-0" />
-              <p className="text-sm text-muted-foreground">
-                AI will automatically research your website and fill in brand
-                details and content strategy
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              {!isAnalyzing && (
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/5 border border-primary/10">
+                  <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                  <p className="text-sm text-muted-foreground">
+                    AI will automatically research your website and fill in brand
+                    details and content strategy
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {isAnalyzing && (
+            <AnalysisProgressCard domain={formData.domain} />
+          )}
+        </>
       )}
 
       {/* Step 2: Brand Details (AI-filled, editable) */}
@@ -470,5 +484,93 @@ export default function NewWebsitePage() {
         )}
       </div>
     </div>
+  );
+}
+
+/* ─── Analysis Progress Card ──────────────────────────────── */
+
+const ANALYSIS_STEPS = [
+  { label: "Connecting to website", icon: Globe, duration: 2000 },
+  { label: "Crawling pages & extracting content", icon: Search, duration: 3000 },
+  { label: "Researching brand with Perplexity AI", icon: Brain, duration: 6000 },
+  { label: "Understanding niche & audience", icon: Target, duration: 3000 },
+  { label: "Generating brand profile with Gemini", icon: FileText, duration: 4000 },
+  { label: "Finalizing analysis", icon: Eye, duration: 2000 },
+];
+
+function AnalysisProgressCard({ domain }: { domain: string }) {
+  const [activeStep, setActiveStep] = useState(0);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    const advance = (step: number) => {
+      if (step >= ANALYSIS_STEPS.length) return;
+      setActiveStep(step);
+      timeout = setTimeout(() => advance(step + 1), ANALYSIS_STEPS[step].duration);
+    };
+    advance(0);
+    return () => clearTimeout(timeout);
+  }, []);
+
+  return (
+    <Card className="border-primary/20 bg-gradient-to-br from-primary/5 via-background to-primary/5 overflow-hidden">
+      <CardContent className="pt-5 pb-5">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="relative flex items-center justify-center">
+            <span className="absolute inline-flex h-10 w-10 rounded-full bg-primary/20 animate-ping" />
+            <span className="relative flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 ring-2 ring-primary/20">
+              <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+            </span>
+          </div>
+          <div>
+            <p className="font-semibold text-sm">Analyzing {domain}</p>
+            <p className="text-xs text-muted-foreground">This takes 15-30 seconds</p>
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          {ANALYSIS_STEPS.map((s, i) => {
+            const Icon = s.icon;
+            const isDone = i < activeStep;
+            const isCurrent = i === activeStep;
+            const isPending = i > activeStep;
+
+            return (
+              <div
+                key={i}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg transition-all duration-500 ${
+                  isCurrent ? "bg-primary/10 border border-primary/20" :
+                  isDone ? "opacity-70" :
+                  "opacity-40"
+                }`}
+              >
+                <div className="shrink-0 w-5 h-5 flex items-center justify-center">
+                  {isDone ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                  ) : isCurrent ? (
+                    <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                  ) : (
+                    <div className="h-3 w-3 rounded-full border-2 border-muted-foreground/30" />
+                  )}
+                </div>
+                <Icon className={`h-4 w-4 shrink-0 ${
+                  isCurrent ? "text-primary" :
+                  isDone ? "text-green-600" :
+                  "text-muted-foreground/50"
+                }`} />
+                <span className={`text-sm ${
+                  isCurrent ? "font-medium text-foreground" :
+                  isDone ? "text-muted-foreground" :
+                  "text-muted-foreground/50"
+                }`}>
+                  {s.label}
+                  {isDone && <span className="text-green-600 ml-1.5 text-xs">Done</span>}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }
