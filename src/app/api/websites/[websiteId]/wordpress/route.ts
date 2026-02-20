@@ -59,19 +59,29 @@ export async function POST(req: Request, { params }: Params) {
       if (!siteUrl || !pluginApiKey) {
         return NextResponse.json({ error: "siteUrl and pluginApiKey are required" }, { status: 400 });
       }
-      try {
-        const res = await fetch(`${cleanUrl}/wp-json/stackserp/v1/status`, {
-          headers: { "X-StackSerp-Key": pluginApiKey },
-          signal: AbortSignal.timeout(10000),
-        });
-        if (res.ok) {
-          const data = await res.json() as Record<string, string>;
-          return NextResponse.json({ success: true, version: data.version ?? "1.0" });
+      // Try both stackserp and blogforge plugin namespaces
+      const namespaces = ["stackserp", "blogforge"];
+      for (const ns of namespaces) {
+        try {
+          const res = await fetch(`${cleanUrl}/wp-json/${ns}/v1/status`, {
+            headers: {
+              "X-StackSerp-Key": pluginApiKey,
+              "X-BlogForge-Key": pluginApiKey,
+            },
+            signal: AbortSignal.timeout(10000),
+          });
+          if (res.ok) {
+            const data = await res.json() as Record<string, string>;
+            return NextResponse.json({ success: true, version: data.version ?? "1.0", plugin: ns });
+          }
+        } catch {
+          // try next namespace
         }
-        return NextResponse.json({ success: false, error: `WordPress returned ${res.status} — check your API key and that the plugin is active` });
-      } catch {
-        return NextResponse.json({ success: false, error: "Could not reach your WordPress site — check the URL and that the plugin is installed" });
       }
+      return NextResponse.json({
+        success: false,
+        error: "Could not reach the WordPress plugin — check your API key and that the StackSerp Connector (or BlogForge Connector) plugin is installed and activated",
+      });
     }
 
     if (action === "test") {

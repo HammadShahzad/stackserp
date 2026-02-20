@@ -379,8 +379,37 @@ export async function pushToWordPress(
 }
 
 /**
- * Push a blog post via the StackSerp Connector plugin.
- * Uses /wp-json/stackserp/v1/posts with X-StackSerp-Key header.
+ * Supported plugin namespaces — tries stackserp first, falls back to blogforge.
+ * This supports both the StackSerp Connector and legacy BlogForge Connector plugins.
+ */
+const PLUGIN_NAMESPACES = ["stackserp", "blogforge"];
+
+/**
+ * Detect which plugin namespace is active on the WordPress site.
+ * Caches result for the duration of the request.
+ */
+async function detectPluginNamespace(
+  base: string,
+  apiKey: string,
+): Promise<{ namespace: string; headerKey: string } | null> {
+  for (const ns of PLUGIN_NAMESPACES) {
+    const headerKey = ns === "stackserp" ? "X-StackSerp-Key" : "X-BlogForge-Key";
+    try {
+      const res = await fetch(`${base}/wp-json/${ns}/v1/status`, {
+        headers: { [headerKey]: apiKey, "X-StackSerp-Key": apiKey, "X-BlogForge-Key": apiKey },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (res.ok) return { namespace: ns, headerKey };
+    } catch {
+      // try next
+    }
+  }
+  return null;
+}
+
+/**
+ * Push a blog post via the StackSerp/BlogForge Connector plugin.
+ * Auto-detects which plugin namespace is available on the site.
  */
 export async function pushToWordPressPlugin(
   post: WordPressPostPayload,
@@ -391,11 +420,20 @@ export async function pushToWordPressPlugin(
   const htmlContent = markdownToHtml(post.content);
 
   try {
-    const res = await fetch(`${base}/wp-json/stackserp/v1/posts`, {
+    const detected = await detectPluginNamespace(base, pluginApiKey);
+    if (!detected) {
+      return {
+        success: false,
+        error: "Could not reach the WordPress plugin. Make sure the StackSerp Connector (or BlogForge Connector) plugin is installed and activated.",
+      };
+    }
+
+    const res = await fetch(`${base}/wp-json/${detected.namespace}/v1/posts`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-StackSerp-Key": pluginApiKey,
+        "X-BlogForge-Key": pluginApiKey,
       },
       body: JSON.stringify({
         title: post.title,
