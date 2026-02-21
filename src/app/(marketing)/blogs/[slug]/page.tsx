@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Calendar, Clock, User, ArrowLeft, Tag, Share2, ChevronRight, ArrowRight } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSlug from "rehype-slug";
