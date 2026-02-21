@@ -92,6 +92,7 @@ export default function PostEditorPage() {
   const [wpResult, setWpResult] = useState<{ url?: string; editUrl?: string } | null>(null);
   const [shopifyResult, setShopifyResult] = useState<{ articleUrl?: string; adminUrl?: string } | null>(null);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
+  const [isFixingSEO, setIsFixingSEO] = useState(false);
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageCacheBust, setImageCacheBust] = useState<number>(Date.now());
   const [tagInput, setTagInput] = useState("");
@@ -285,6 +286,37 @@ export default function PostEditorPage() {
       toast.error("Failed to push to WordPress");
     } finally {
       setIsPushingToWP(false);
+    }
+  };
+
+  const handleAutoFixSEO = async () => {
+    if (isNew || !postId) {
+      toast.error("Save the post first");
+      return;
+    }
+    setIsFixingSEO(true);
+    try {
+      const res = await fetch(
+        `/api/websites/${websiteId}/posts/${postId}/seo-fix`,
+        { method: "POST" }
+      );
+      const data = await res.json();
+      if (res.ok) {
+        updateField("content", data.content);
+        const fixed = data.issuesFixed;
+        const messages = [];
+        if (fixed.longParagraphs > 0) messages.push(`${fixed.longParagraphs} long paragraph(s) split`);
+        if (fixed.addedH3s) messages.push("H3 subheadings added");
+        if (fixed.expandedWords) messages.push("content expanded to 1500+ words");
+        if (fixed.addedLinks) messages.push("internal links added");
+        toast.success(`Fixed: ${messages.join(", ") || "no issues found"}`);
+      } else {
+        toast.error(data.error || "Auto-fix failed");
+      }
+    } catch {
+      toast.error("Auto-fix failed");
+    } finally {
+      setIsFixingSEO(false);
     }
   };
 
@@ -605,6 +637,8 @@ export default function PostEditorPage() {
                     wordCount={wordCount}
                     featuredImage={post.featuredImage}
                     featuredImageAlt={post.featuredImageAlt}
+                    onAutoFix={!isNew ? handleAutoFixSEO : undefined}
+                    isFixing={isFixingSEO}
                   />
                 </CardContent>
               </Card>

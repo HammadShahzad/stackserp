@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { Progress } from "@/components/ui/progress";
-import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2, XCircle, AlertCircle, Wand2, Loader2 } from "lucide-react";
 
 interface SEOScoreProps {
   title: string;
@@ -13,6 +14,8 @@ interface SEOScoreProps {
   wordCount: number;
   featuredImage?: string | null;
   featuredImageAlt?: string | null;
+  onAutoFix?: () => void;
+  isFixing?: boolean;
 }
 
 interface Factor {
@@ -26,6 +29,14 @@ interface Factor {
  * Mirrors the exact scoring algorithm in src/lib/seo-scorer.ts
  * so the score shown on the post editor matches the stored contentScore.
  */
+// Which factor labels can be auto-fixed by the AI
+const AUTO_FIXABLE = new Set([
+  "Word count",
+  "Heading structure",
+  "Internal links",
+  "Readability",
+]);
+
 export function SEOScore({
   title,
   content,
@@ -35,6 +46,8 @@ export function SEOScore({
   wordCount,
   featuredImage,
   featuredImageAlt,
+  onAutoFix,
+  isFixing,
 }: SEOScoreProps) {
   const { score, breakdown } = useMemo(() => {
     const kw = focusKeyword.toLowerCase();
@@ -173,7 +186,10 @@ export function SEOScore({
     }
 
     const total = factors.reduce((sum, f) => sum + f.points, 0);
-    return { score: total, breakdown: factors };
+    const fixableIssues = factors.filter(
+      (f) => f.points < f.maxPoints && AUTO_FIXABLE.has(f.label)
+    );
+    return { score: total, breakdown: factors, fixableIssues };
   }, [title, content, metaTitle, metaDescription, focusKeyword, wordCount, featuredImage, featuredImageAlt]);
 
   const scoreColor =
@@ -190,10 +206,32 @@ export function SEOScore({
         <span className={`text-2xl font-bold ${scoreColor}`}>{score}</span>
       </div>
       <Progress value={score} className="h-2" />
+
+      {/* Auto-fix button — shown when there are fixable issues */}
+      {onAutoFix && fixableIssues.length > 0 && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="w-full text-xs gap-1.5 border-primary/30 text-primary hover:bg-primary/5"
+          onClick={onAutoFix}
+          disabled={isFixing}
+        >
+          {isFixing ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Wand2 className="h-3.5 w-3.5" />
+          )}
+          {isFixing
+            ? "Fixing issues…"
+            : `Auto-Fix ${fixableIssues.length} issue${fixableIssues.length > 1 ? "s" : ""}`}
+        </Button>
+      )}
+
       <div className="space-y-2">
         {breakdown.map((factor) => {
           const full = factor.points === factor.maxPoints;
           const partial = factor.points > 0 && !full;
+          const fixable = !full && AUTO_FIXABLE.has(factor.label);
 
           return (
             <div key={factor.label} className="flex items-start gap-2">
@@ -205,11 +243,18 @@ export function SEOScore({
                 <XCircle className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
               )}
               <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-1">
                   <p className="text-xs font-medium">{factor.label}</p>
-                  <span className={`text-[10px] font-mono ${full ? "text-green-600" : partial ? "text-yellow-600" : "text-muted-foreground"}`}>
-                    {factor.points}/{factor.maxPoints}
-                  </span>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {fixable && (
+                      <span className="text-[9px] bg-primary/10 text-primary px-1 py-0.5 rounded font-medium">
+                        fixable
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-mono ${full ? "text-green-600" : partial ? "text-yellow-600" : "text-muted-foreground"}`}>
+                      {factor.points}/{factor.maxPoints}
+                    </span>
+                  </div>
                 </div>
                 <p className="text-xs text-muted-foreground">{factor.note}</p>
               </div>
