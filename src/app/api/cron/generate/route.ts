@@ -127,7 +127,7 @@ export async function POST(req: Request) {
           keywordId: keyword.id,
           keyword: keyword.keyword,
           websiteId: website.id,
-          contentLength: website.blogSettings?.contentLength || "MEDIUM",
+          contentLength: (["SHORT", "MEDIUM"].includes(website.blogSettings?.contentLength || "") ? website.blogSettings?.contentLength : "MEDIUM") as "SHORT" | "MEDIUM",
           includeImages: website.blogSettings?.includeImages ?? true,
           includeFAQ: website.blogSettings?.includeFAQ ?? true,
           autoPublish: website.blogSettings?.autoPublish ?? false,
