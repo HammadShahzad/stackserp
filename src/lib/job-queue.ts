@@ -14,7 +14,7 @@ export interface JobInput {
   keywordId: string;
   keyword: string;
   websiteId: string;
-  contentLength?: "SHORT" | "MEDIUM" | "LONG" | "PILLAR";
+  contentLength?: "SHORT" | "MEDIUM";
   includeImages?: boolean;
   includeFAQ?: boolean;
   autoPublish?: boolean;

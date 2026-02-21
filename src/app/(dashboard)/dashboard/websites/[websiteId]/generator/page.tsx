@@ -638,8 +638,6 @@ export default function GeneratorPage() {
                   <SelectContent>
                     <SelectItem value="SHORT">Short (800-1200 words)</SelectItem>
                     <SelectItem value="MEDIUM">Medium (1500-2500 words)</SelectItem>
-                    <SelectItem value="LONG">Long (2500-4000 words)</SelectItem>
-                    <SelectItem value="PILLAR">Pillar (4000-6000 words)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

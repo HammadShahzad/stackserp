@@ -166,7 +166,7 @@ function countWords(text: string): number {
 export async function generateBlogPost(
   keyword: string,
   website: WebsiteWithSettings,
-  contentLength: "SHORT" | "MEDIUM" | "LONG" | "PILLAR" = "MEDIUM",
+  contentLength: "SHORT" | "MEDIUM" = "MEDIUM",
   options: {
     includeImages?: boolean;
     includeFAQ?: boolean;
@@ -196,8 +196,6 @@ export async function generateBlogPost(
   const wordTargets = {
     SHORT: "800-1200",
     MEDIUM: "1500-2500",
-    LONG: "2500-4000",
-    PILLAR: "4000-6000",
   };
   const targetWords = wordTargets[contentLength];
 

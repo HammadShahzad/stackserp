@@ -55,7 +55,7 @@ export async function POST(
       keywordId,
       keyword,
       websiteId,
-      contentLength: (input?.contentLength as "SHORT" | "MEDIUM" | "LONG" | "PILLAR") || "MEDIUM",
+      contentLength: (input?.contentLength as "SHORT" | "MEDIUM") || "MEDIUM",
       includeImages: (input?.includeImages as boolean) ?? true,
       includeFAQ: (input?.includeFAQ as boolean) ?? true,
       autoPublish: (input?.autoPublish as boolean) ?? false,
