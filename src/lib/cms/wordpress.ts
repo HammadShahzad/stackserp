@@ -288,9 +288,15 @@ async function ensureTags(
  * StackSerp injects for its own reader view — WordPress generates its own TOC.
  */
 export function markdownToHtml(markdown: string): string {
+  // Strip any wrapping code fence (```markdown, ```plaintext, ```, etc.)
+  const stripped = markdown
+    .replace(/^```[a-zA-Z0-9_-]*\s*\n?/, "")
+    .replace(/\n?```\s*$/, "")
+    .trim();
+
   // Remove the StackSerp TOC block (## Table of Contents … next H2/H1)
   // so WordPress doesn't render a raw anchor-link list at the top.
-  const withoutToc = markdown.replace(
+  const withoutToc = stripped.replace(
     /^##\s+Table of Contents\s*\n([\s\S]*?)(?=\n##?\s|$)/im,
     ""
   ).trim();

@@ -184,8 +184,10 @@ export default async function PublicBlogPostPage({ params }: Props) {
   const postUrl = `${baseUrl}/blog/${subdomain}/${slug}`;
 
   const cleanContent = post.content
-    .replace(/^```(?:markdown|md|html|text)?\s*\n?/i, "")
-    .replace(/\n?```\s*$/i, "")
+    // Strip any opening code fence regardless of language tag (```markdown, ```plaintext, etc.)
+    .replace(/^```[a-zA-Z0-9_-]*\s*\n?/, "")
+    // Strip closing code fence at end
+    .replace(/\n?```\s*$/, "")
     .replace(
       /\[INTERNAL_LINK:\s*([^\]]+)\]\(([^)]*)\)/gi,
       (_match, anchor: string) => anchor.trim()
