@@ -51,6 +51,7 @@ import {
   CheckCircle2,
   ArrowRight,
   ChevronDown,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import Link from "next/link";
@@ -105,7 +106,6 @@ export default function KeywordsPage() {
   // Dialogs
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showBulkDialog, setShowBulkDialog] = useState(false);
-  const [showSuggestDialog, setShowSuggestDialog] = useState(false);
   const [showBulkGenDialog, setShowBulkGenDialog] = useState(false);
 
   // Add form
@@ -133,7 +133,6 @@ export default function KeywordsPage() {
     if (job?.status === "done" && !job.resultConsumed && job.resultData?.suggestions?.length) {
       setSuggestions(job.resultData.suggestions);
       setSelectedSuggestions(new Set(job.resultData.suggestions.map((s: Suggestion) => s.keyword)));
-      setShowSuggestDialog(true);
       consumeResult(suggestJobId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -225,7 +224,6 @@ export default function KeywordsPage() {
     setIsLoadingSuggestions(true);
     setSuggestions([]);
     setSelectedSuggestions(new Set());
-    setShowSuggestDialog(true);
 
     const label = suggestSeedKeyword.trim()
       ? `Keywords: "${suggestSeedKeyword.trim()}"`
@@ -290,8 +288,8 @@ export default function KeywordsPage() {
       const data = await res.json();
       if (res.ok) {
         toast.success(`Added ${data.imported} keywords to queue`);
-        setShowSuggestDialog(false);
         setSuggestions([]);
+        setSelectedSuggestions(new Set());
         consumeResult(suggestJobId);
         fetchKeywords();
       }
@@ -370,38 +368,118 @@ export default function KeywordsPage() {
 
   return (
     <div className="space-y-6">
-      {/* Inline progress banner — visible when AI suggest is running */}
-      {isLoadingSuggestions && (
-        <Card className="border-blue-200 bg-blue-50 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm text-blue-900">
-                  Generating keyword suggestions…
-                </p>
-                <p className="text-xs text-blue-700">
-                  {suggestSeedKeyword.trim() ? `Topic: "${suggestSeedKeyword.trim()}"` : "Based on your niche"}
-                </p>
+      {/* ── AI Suggestions inline panel ── */}
+      {(isLoadingSuggestions || suggestions.length > 0) && (
+        <Card className={isLoadingSuggestions ? "border-blue-200 bg-blue-50" : "border-primary/20 bg-primary/5"}>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                {isLoadingSuggestions ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                ) : (
+                  <Sparkles className="h-4 w-4 text-primary" />
+                )}
+                {isLoadingSuggestions
+                  ? "Generating keyword suggestions…"
+                  : `AI Suggestions — ${suggestions.length} keywords`}
+              </CardTitle>
+              {!isLoadingSuggestions && suggestions.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" className="text-xs h-7"
+                    onClick={() => {
+                      if (selectedSuggestions.size === suggestions.length)
+                        setSelectedSuggestions(new Set());
+                      else
+                        setSelectedSuggestions(new Set(suggestions.map(s => s.keyword)));
+                    }}>
+                    {selectedSuggestions.size === suggestions.length ? "Deselect All" : "Select All"}
+                  </Button>
+                  <Button size="sm" className="h-7 text-xs"
+                    disabled={isAddingSuggestions || selectedSuggestions.size === 0}
+                    onClick={handleAddSuggestions}>
+                    {isAddingSuggestions
+                      ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                      : <Plus className="mr-1.5 h-3 w-3" />}
+                    Add {selectedSuggestions.size} to Queue
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground"
+                    title="Dismiss suggestions"
+                    onClick={() => { setSuggestions([]); setSelectedSuggestions(new Set()); consumeResult(suggestJobId); }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+            {isLoadingSuggestions && (
+              <>
+                <Progress value={50} className="h-1 mt-2" />
+                <div className="flex items-center gap-1 mt-1">
+                  {suggestSteps.map((s) => {
+                    const labels: Record<string, string> = { analyzing: "Analyzing", generating: "Generating", filtering: "Filtering" };
+                    return (
+                      <span key={s} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] bg-blue-100 text-blue-800">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        {labels[s]}
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </CardHeader>
+
+          {!isLoadingSuggestions && suggestions.length > 0 && (
+            <CardContent className="px-4 pb-4 pt-0">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {suggestions.map((s) => (
+                  <div
+                    key={s.keyword}
+                    onClick={() => setSelectedSuggestions(prev => {
+                      const next = new Set(prev);
+                      next.has(s.keyword) ? next.delete(s.keyword) : next.add(s.keyword);
+                      return next;
+                    })}
+                    className={`flex items-start gap-2.5 p-3 rounded-lg border cursor-pointer transition-all ${
+                      selectedSuggestions.has(s.keyword)
+                        ? "border-primary bg-primary/5"
+                        : "border-border bg-background hover:bg-muted/40"
+                    }`}
+                  >
+                    <Checkbox checked={selectedSuggestions.has(s.keyword)} className="mt-0.5 shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="font-medium text-sm">{s.keyword}</p>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${INTENT_COLORS[s.intent] || "bg-gray-50 text-gray-700"}`}>
+                          {s.intent}
+                        </span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                          s.difficulty === "low" ? "bg-green-50 text-green-700" :
+                          s.difficulty === "medium" ? "bg-yellow-50 text-yellow-700" :
+                          "bg-red-50 text-red-700"
+                        }`}>
+                          {s.difficulty}
+                        </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{s.rationale}</p>
+                    </div>
+                    <button
+                      className="shrink-0 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const remaining = suggestions.filter(x => x.keyword !== s.keyword);
+                        setSuggestions(remaining);
+                        setSelectedSuggestions(prev => { const n = new Set(prev); n.delete(s.keyword); return n; });
+                        updateJob(suggestJobId, { resultData: { suggestions: remaining } });
+                      }}
+                      title="Remove suggestion"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
-              <Button size="sm" variant="outline" className="text-xs border-blue-300 text-blue-800 hover:bg-blue-100"
-                onClick={() => setShowSuggestDialog(true)}>
-                View <ArrowRight className="ml-1 h-3 w-3" />
-              </Button>
-            </div>
-            <Progress value={isLoadingSuggestions ? 50 : 100} className="h-1" />
-            <div className="flex items-center gap-1 flex-wrap px-4 py-2 bg-white/60">
-              {suggestSteps.map((stepId) => {
-                const labels: Record<string, string> = { analyzing: "Analyzing", generating: "Generating", filtering: "Filtering" };
-                return (
-                  <span key={stepId} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {labels[stepId] || stepId}
-                  </span>
-                );
-              })}
-            </div>
-          </CardContent>
+            </CardContent>
+          )}
         </Card>
       )}
 
@@ -646,83 +724,6 @@ export default function KeywordsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* ── AI Suggestions Dialog ── */}
-      <Dialog open={showSuggestDialog} onOpenChange={setShowSuggestDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              AI Keyword Suggestions
-            </DialogTitle>
-            <DialogDescription>
-              {suggestSeedKeyword.trim()
-                ? `Keywords focused on "${suggestSeedKeyword.trim()}". Select ones to add.`
-                : "AI-generated keyword ideas based on your niche. Select ones to add."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {isLoadingSuggestions ? (
-            <AiLoading steps={[...AI_STEPS.keywordSuggest]} />
-          ) : (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm text-muted-foreground">{suggestions.length} suggestions</p>
-                <Button variant="ghost" size="sm" onClick={() => {
-                  if (selectedSuggestions.size === suggestions.length) setSelectedSuggestions(new Set());
-                  else setSelectedSuggestions(new Set(suggestions.map(s => s.keyword)));
-                }}>
-                  {selectedSuggestions.size === suggestions.length ? "Deselect All" : "Select All"}
-                </Button>
-              </div>
-              {suggestions.map(s => (
-                <div
-                  key={s.keyword}
-                  onClick={() => {
-                    setSelectedSuggestions(prev => {
-                      const next = new Set(prev);
-                      next.has(s.keyword) ? next.delete(s.keyword) : next.add(s.keyword);
-                      return next;
-                    });
-                  }}
-                  className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedSuggestions.has(s.keyword) ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                  }`}
-                >
-                  <Checkbox checked={selectedSuggestions.has(s.keyword)} className="mt-0.5 shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-sm">{s.keyword}</p>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${INTENT_COLORS[s.intent] || "bg-gray-50 text-gray-700"}`}>
-                        {s.intent}
-                      </span>
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                        s.difficulty === "low" ? "bg-green-50 text-green-700" :
-                        s.difficulty === "medium" ? "bg-yellow-50 text-yellow-700" :
-                        "bg-red-50 text-red-700"
-                      }`}>
-                        {s.difficulty} difficulty
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{s.rationale}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowSuggestDialog(false)}>Cancel</Button>
-            <Button
-              onClick={handleAddSuggestions}
-              disabled={isAddingSuggestions || selectedSuggestions.size === 0}
-            >
-              {isAddingSuggestions && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Add {selectedSuggestions.size} Keywords
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       {/* ── Bulk Generate Dialog ── */}
       <Dialog open={showBulkGenDialog} onOpenChange={setShowBulkGenDialog}>

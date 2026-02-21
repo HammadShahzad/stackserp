@@ -193,7 +193,6 @@ export default function ClustersPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showReviewDialog, setShowReviewDialog] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedCluster[]>([]);
   const [stepStatus, setStepStatus] = useState<StepStatus | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
@@ -232,7 +231,6 @@ export default function ClustersPage() {
         (job.resultData.suggestions as SuggestedCluster[]).map((_, i) => i)
       ));
       if (job.resultData.stepStatus) setStepStatus(job.resultData.stepStatus);
-      setShowReviewDialog(true);
       consumeResult(clusterJobId);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -282,14 +280,12 @@ export default function ClustersPage() {
       if (!data.suggestions?.length) {
         setSuggestions([]);
         setSelectedSuggestions(new Set());
-        setShowReviewDialog(true);
         updateJob(clusterJobId, { status: "done", progress: 100, resultData: { suggestions: [], stepStatus }, resultConsumed: false });
         return;
       }
 
       setSuggestions(data.suggestions);
       setSelectedSuggestions(new Set(data.suggestions.map((_: SuggestedCluster, i: number) => i)));
-      setShowReviewDialog(true);
       // Persist results so they survive navigation
       updateJob(clusterJobId, {
         status: "done",
@@ -319,8 +315,8 @@ export default function ClustersPage() {
 
       if (!res.ok) throw new Error("Save failed");
       toast.success(`Saved ${toSave.length} topic clusters`);
-      setShowReviewDialog(false);
       setSuggestions([]);
+      setSelectedSuggestions(new Set());
       consumeResult(clusterJobId);
       fetchClusters();
     } catch {
@@ -419,34 +415,141 @@ export default function ClustersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Inline progress banner — visible when AI generate is running */}
-      {isGenerating && (
-        <Card className="border-blue-200 bg-blue-50 overflow-hidden">
-          <CardContent className="p-0">
-            <div className="flex items-center gap-3 px-4 py-3">
-              <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm text-blue-900">
-                  Generating topic clusters…
-                </p>
-                <p className="text-xs text-blue-700">
-                  {seedTopic.trim() ? `Topic: "${seedTopic.trim()}"` : "Based on your niche"}
-                </p>
-              </div>
+      {/* ── AI Suggestions inline panel (generating + results) ── */}
+      {(isGenerating || suggestions.length > 0 || (stepStatus && !isGenerating)) && (
+        <Card className={isGenerating ? "border-blue-200 bg-blue-50" : "border-primary/20 bg-primary/5"}>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base flex items-center gap-2">
+                {isGenerating ? (
+                  <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+                ) : (
+                  <Sparkles className="h-4 w-4 text-primary" />
+                )}
+                {isGenerating
+                  ? "Generating topic clusters…"
+                  : suggestions.length > 0
+                    ? `AI Suggestions — ${suggestions.length} clusters`
+                    : "Generation complete"}
+              </CardTitle>
+              {!isGenerating && (
+                <div className="flex items-center gap-2">
+                  {suggestions.length > 0 && (
+                    <>
+                      <Button variant="ghost" size="sm" className="h-7 text-xs gap-1.5"
+                        onClick={() => setSelectedSuggestions(new Set(suggestions.map((_, i) => i)))}>
+                        <CheckCheck className="h-3.5 w-3.5" /> Select All
+                      </Button>
+                      <Button size="sm" className="h-7 text-xs"
+                        disabled={isSaving || selectedSuggestions.size === 0}
+                        onClick={handleSaveSuggestions}>
+                        {isSaving
+                          ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                          : <Plus className="mr-1.5 h-3 w-3" />}
+                        Save {selectedSuggestions.size} cluster{selectedSuggestions.size !== 1 ? "s" : ""}
+                      </Button>
+                    </>
+                  )}
+                  <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground"
+                    title="Dismiss"
+                    onClick={() => {
+                      setSuggestions([]);
+                      setSelectedSuggestions(new Set());
+                      setStepStatus(null);
+                      consumeResult(clusterJobId);
+                    }}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
-            <Progress value={50} className="h-1" />
-            <div className="flex items-center gap-1 flex-wrap px-4 py-2 bg-white/60">
-              {clusterSteps.map((stepId) => {
-                const labels: Record<string, string> = { crawling: "Crawling", analyzing: "Analyzing", generating: "Generating", saving: "Saving" };
-                return (
-                  <span key={stepId} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                    {labels[stepId] || stepId}
-                  </span>
-                );
-              })}
-            </div>
-          </CardContent>
+            {isGenerating && (
+              <>
+                <Progress value={50} className="h-1 mt-2" />
+                <div className="flex items-center gap-1 mt-1">
+                  {clusterSteps.map((s) => {
+                    const labels: Record<string, string> = { crawling: "Crawling", analyzing: "Analyzing", generating: "Generating", saving: "Saving" };
+                    return (
+                      <span key={s} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[11px] bg-blue-100 text-blue-800">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                        {labels[s]}
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </CardHeader>
+
+          {!isGenerating && (
+            <CardContent className="px-4 pb-4 pt-0 space-y-3">
+              {stepStatus && <ResultStatusBanner steps={stepStatus} />}
+
+              {suggestions.length > 0 && (
+                <div className="space-y-2 mt-1">
+                  {suggestions.map((s, i) => (
+                    <div key={i}
+                      className={`rounded-lg border p-4 cursor-pointer transition-colors ${
+                        selectedSuggestions.has(i)
+                          ? "bg-primary/5 border-primary/20"
+                          : "border-border bg-background hover:bg-muted/30"
+                      }`}
+                      onClick={() => toggleSuggestion(i)}
+                    >
+                      <div className="flex items-start gap-3">
+                        <Checkbox
+                          checked={selectedSuggestions.has(i)}
+                          onCheckedChange={() => toggleSuggestion(i)}
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-0.5 shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="font-medium text-sm">{s.name}</span>
+                            <Badge variant="outline" className="font-mono text-xs">
+                              <KeyRound className="h-2.5 w-2.5 mr-1" />
+                              {s.pillarKeyword}
+                            </Badge>
+                          </div>
+                          {s.rationale && (
+                            <p className="text-xs text-muted-foreground mb-2">{s.rationale}</p>
+                          )}
+                          <div className="flex flex-wrap gap-1">
+                            {s.supportingKeywords.slice(0, 6).map((kw) => (
+                              <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
+                            ))}
+                            {s.supportingKeywords.length > 6 && (
+                              <Badge variant="secondary" className="text-xs">+{s.supportingKeywords.length - 6} more</Badge>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          className="shrink-0 p-0.5 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const remaining = suggestions.filter((_, j) => j !== i);
+                            setSuggestions(remaining);
+                            setSelectedSuggestions(prev => {
+                              const next = new Set<number>();
+                              for (const idx of prev) {
+                                if (idx < i) next.add(idx);
+                                else if (idx > i) next.add(idx - 1);
+                              }
+                              return next;
+                            });
+                            updateJob(clusterJobId, { resultData: { suggestions: remaining, stepStatus } });
+                          }}
+                          title="Remove suggestion"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          )}
         </Card>
       )}
 
@@ -638,104 +741,6 @@ export default function ClustersPage() {
         </div>
       )}
 
-      {/* Review Dialog — opens after generation with status banner */}
-      <Dialog open={showReviewDialog} onOpenChange={setShowReviewDialog}>
-        <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-primary" />
-              AI-Generated Topic Clusters
-            </DialogTitle>
-            <DialogDescription>
-              {suggestions.length > 0
-                ? `${suggestions.length} clusters generated. Deselect any you don't want, then save.`
-                : "The AI couldn't generate clusters — see details below."}
-            </DialogDescription>
-          </DialogHeader>
-
-          {/* Always show what happened */}
-          {stepStatus && <ResultStatusBanner steps={stepStatus} />}
-
-          {suggestions.length > 0 && (
-            <>
-              <div className="flex items-center gap-3 px-1">
-                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs"
-                  onClick={() => setSelectedSuggestions(new Set(suggestions.map((_, i) => i)))}>
-                  <CheckCheck className="h-3.5 w-3.5" />
-                  Select all
-                </Button>
-                <Button variant="ghost" size="sm" className="gap-1.5 h-7 text-xs"
-                  onClick={() => setSelectedSuggestions(new Set())}>
-                  <X className="h-3.5 w-3.5" />
-                  Deselect all
-                </Button>
-                <span className="text-xs text-muted-foreground ml-auto">{selectedSuggestions.size} selected</span>
-              </div>
-
-              <Separator />
-
-              <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-                {suggestions.map((s, i) => (
-                  <div key={i}
-                    className={`rounded-lg border p-4 cursor-pointer transition-colors ${
-                      selectedSuggestions.has(i)
-                        ? "bg-primary/5 border-primary/20"
-                        : "border-muted hover:bg-muted/30"
-                    }`}
-                    onClick={() => toggleSuggestion(i)}
-                  >
-                    <div className="flex items-start gap-3">
-                      <Checkbox
-                        checked={selectedSuggestions.has(i)}
-                        onCheckedChange={() => toggleSuggestion(i)}
-                        onClick={(e) => e.stopPropagation()}
-                        className="mt-0.5 shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <span className="font-medium text-sm">{s.name}</span>
-                          <Badge variant="outline" className="font-mono text-xs">
-                            <KeyRound className="h-2.5 w-2.5 mr-1" />
-                            {s.pillarKeyword}
-                          </Badge>
-                        </div>
-                        {s.rationale && (
-                          <p className="text-xs text-muted-foreground mb-2">{s.rationale}</p>
-                        )}
-                        <div className="flex flex-wrap gap-1">
-                          {s.supportingKeywords.slice(0, 6).map((kw) => (
-                            <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
-                          ))}
-                          {s.supportingKeywords.length > 6 && (
-                            <Badge variant="secondary" className="text-xs">
-                              +{s.supportingKeywords.length - 6} more
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-
-          <Separator />
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReviewDialog(false)}>
-              {suggestions.length === 0 ? "Close" : "Cancel"}
-            </Button>
-            {suggestions.length > 0 && (
-              <Button onClick={handleSaveSuggestions}
-                disabled={isSaving || selectedSuggestions.size === 0} className="gap-2">
-                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-                Save {selectedSuggestions.size} cluster{selectedSuggestions.size !== 1 ? "s" : ""}
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
