@@ -38,6 +38,10 @@ import {
   ExternalLink,
   RefreshCw,
   Sparkles,
+  Wand2,
+  ChevronDown,
+  ChevronUp,
+  ClipboardPaste,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -94,6 +98,12 @@ export default function PostEditorPage() {
   const [shopifyResult, setShopifyResult] = useState<{ articleUrl?: string; adminUrl?: string } | null>(null);
   const [isRegeneratingImage, setIsRegeneratingImage] = useState(false);
   const [isFixingSEO, setIsFixingSEO] = useState(false);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [aiText, setAiText] = useState("");
+  const [aiAction, setAiAction] = useState<"rewrite" | "expand" | "shorten" | "improve" | "custom">("improve");
+  const [aiCustomPrompt, setAiCustomPrompt] = useState("");
+  const [aiResult, setAiResult] = useState("");
+  const [isRewriting, setIsRewriting] = useState(false);
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageCacheBust, setImageCacheBust] = useState<number>(Date.now());
   const [tagInput, setTagInput] = useState("");
@@ -229,6 +239,29 @@ export default function PostEditorPage() {
       toast.error("Failed to save post");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleAIRewrite = async () => {
+    if (!aiText.trim()) {
+      toast.error("Paste or type the text you want to rewrite");
+      return;
+    }
+    setIsRewriting(true);
+    setAiResult("");
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/ai-rewrite`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: aiText, action: aiAction, customPrompt: aiCustomPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Rewrite failed");
+      setAiResult(data.result);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Rewrite failed");
+    } finally {
+      setIsRewriting(false);
     }
   };
 
@@ -644,6 +677,109 @@ export default function PostEditorPage() {
               }}
               className="h-7 text-sm"
             />
+          </div>
+
+          {/* AI Writing Assistant */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              onClick={() => { setShowAIPanel((p) => !p); setAiResult(""); }}
+              className="w-full flex items-center justify-between px-4 py-2.5 bg-gradient-to-r from-violet-50 to-purple-50 hover:from-violet-100 hover:to-purple-100 text-sm font-medium text-purple-800 transition-colors"
+            >
+              <span className="flex items-center gap-2">
+                <Wand2 className="h-4 w-4 text-purple-600" />
+                AI Writing Assistant
+              </span>
+              {showAIPanel ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {showAIPanel && (
+              <div className="p-4 space-y-3 bg-white border-t">
+                <p className="text-xs text-muted-foreground">Paste any section of your article, choose an action, and apply it back.</p>
+                <Textarea
+                  placeholder="Paste the section you want to rewrite, expand, shorten or improve…"
+                  value={aiText}
+                  onChange={(e) => setAiText(e.target.value)}
+                  rows={5}
+                  className="text-sm font-mono"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  {(["rewrite", "expand", "shorten", "improve", "custom"] as const).map((a) => (
+                    <button
+                      key={a}
+                      type="button"
+                      onClick={() => setAiAction(a)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
+                        aiAction === a
+                          ? "bg-purple-600 text-white border-purple-600"
+                          : "bg-white text-purple-700 border-purple-300 hover:border-purple-600"
+                      }`}
+                    >
+                      {a.charAt(0).toUpperCase() + a.slice(1)}
+                    </button>
+                  ))}
+                  <Button
+                    size="sm"
+                    onClick={handleAIRewrite}
+                    disabled={isRewriting || !aiText.trim()}
+                    className="ml-auto bg-purple-600 hover:bg-purple-700 text-white"
+                  >
+                    {isRewriting ? (
+                      <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+                    )}
+                    {isRewriting ? "Working…" : "Apply"}
+                  </Button>
+                </div>
+                {aiAction === "custom" && (
+                  <input
+                    type="text"
+                    placeholder="Describe what you want to do with this text…"
+                    value={aiCustomPrompt}
+                    onChange={(e) => setAiCustomPrompt(e.target.value)}
+                    className="w-full text-sm border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-purple-400"
+                  />
+                )}
+                {aiResult && (
+                  <div className="space-y-2">
+                    <div className="border rounded-md p-3 bg-gray-50 text-sm font-mono whitespace-pre-wrap max-h-60 overflow-y-auto">
+                      {aiResult}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-xs border-purple-400 text-purple-700 hover:bg-purple-50"
+                        onClick={() => {
+                          navigator.clipboard.writeText(aiResult);
+                          toast.success("Copied to clipboard");
+                        }}
+                      >
+                        <ClipboardPaste className="mr-1 h-3 w-3" />
+                        Copy
+                      </Button>
+                      <Button
+                        size="sm"
+                        className="text-xs bg-purple-600 hover:bg-purple-700 text-white"
+                        onClick={() => {
+                          if (aiText && post.content?.includes(aiText)) {
+                            updateField("content", post.content.replace(aiText, aiResult));
+                            toast.success("Section replaced in editor");
+                          } else {
+                            updateField("content", (post.content || "") + "\n\n" + aiResult);
+                            toast.success("Appended to content");
+                          }
+                          setAiText(aiResult);
+                          setAiResult("");
+                        }}
+                      >
+                        Replace in Editor
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Markdown Editor */}

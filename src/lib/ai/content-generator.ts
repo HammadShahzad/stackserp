@@ -239,18 +239,24 @@ Research findings:
 ${research.rawResearch.substring(0, 3000)}
 
 Content gaps to exploit (what competitors miss):
-${research.contentGaps.slice(0, 5).join("\n- ")}
+- ${research.contentGaps.slice(0, 5).join("\n- ")}
 
 Common questions people ask:
-${research.commonQuestions.slice(0, 5).join("\n- ")}
+- ${research.commonQuestions.slice(0, 5).join("\n- ")}
+
+Key statistics to use:
+- ${research.keyStatistics.slice(0, 4).join("\n- ")}
+
+${research.suggestedAngle ? `Unique angle discovered in research (use this to differentiate the article):\n"${research.suggestedAngle}"` : ""}
 
 Create an outline with:
-- A compelling, SEO-optimized H1 title (include the keyword naturally, 50-70 chars)
-- 5-7 H2 sections with 3-4 bullet points each
+- A compelling, SEO-optimized H1 title (include the keyword naturally, 50-70 chars) — reflect the unique angle if strong
+- 5-7 H2 sections with 3-4 bullet points each — vary the section types (how-to, comparison, case study, data breakdown)
 - Cover everything top competitors cover PLUS the content gaps identified above
 ${includeFAQ ? "- A FAQ section with 4-5 of the most commonly searched questions" : ""}
 - A "Key Takeaways" section near the top
 - A strong conclusion with CTA for ${ctx.brandName}
+- In the "uniqueAngle" field: write the specific contrarian/fresh angle this article should take vs. the typical treatment of this topic
 
 Return JSON: { "title": "...", "sections": [{ "heading": "...", "points": ["..."] }], "uniqueAngle": "..." }`,
     systemPrompt

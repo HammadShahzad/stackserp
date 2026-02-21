@@ -35,15 +35,17 @@ export async function researchKeyword(
 
 The blog is for ${websiteContext.brandName}, a ${websiteContext.niche} platform targeting ${websiteContext.targetAudience}.
 
-Provide:
+Provide ALL of the following:
 1. Factual, up-to-date data, statistics, expert insights, and actionable information
-2. Specific numbers, prices, comparisons, and real-world examples
-3. What are the top 5 ranking articles for "${keyword}"? What do they cover that we should include?
-4. What content gaps exist that competitors miss?
-5. What are the most common questions people ask about this topic?
+2. Specific numbers, prices, comparisons, and real-world examples — the more concrete the better
+3. What are the top 5 ranking articles for "${keyword}"? What do they cover? What structure and headings do they use?
+4. What content gaps exist that competitors miss? What questions do they fail to answer?
+5. What are the most common questions people ask about this topic (forums, Reddit, Quora, Google PAA)?
 6. Any relevant trends or recent changes in 2025-2026
-7. Key statistics and data points that would strengthen the article
-8. Related subtopics worth covering to be comprehensive`;
+7. Key statistics and data points that would strengthen the article — cite sources where possible
+8. Related subtopics worth covering to be comprehensive
+9. UNIQUE ANGLE: What is a fresh, contrarian, or underexplored perspective on this topic that most articles don't take? What would make a reader say "I've never thought about it that way"?
+10. SPECIFIC EXAMPLES: Name real tools, companies, people, or case studies related to this topic that could be referenced in the article`;
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -63,9 +65,7 @@ Provide:
         ],
         max_tokens: 4000,
         temperature: 0.2,
-        search_domain_filter: [],
         return_related_questions: true,
-        search_recency_filter: "month",
       }),
       signal: AbortSignal.timeout(60000),
     });
@@ -86,12 +86,12 @@ Provide:
     return {
       rawResearch,
       topRankingContent: rawResearch,
-      contentGaps: extractSection(rawResearch, "content gap", "miss"),
-      competitorHeadings: extractSection(rawResearch, "heading", "cover", "ranking"),
-      keyStatistics: extractSection(rawResearch, "statistic", "data", "number", "percent"),
-      relatedTopics: extractSection(rawResearch, "related", "subtopic", "also"),
-      suggestedAngle: "",
-      commonQuestions: extractSection(rawResearch, "question", "ask", "faq"),
+      contentGaps: extractSection(rawResearch, "content gap", "miss", "fail"),
+      competitorHeadings: extractSection(rawResearch, "heading", "cover", "ranking", "structure"),
+      keyStatistics: extractSection(rawResearch, "statistic", "data", "number", "percent", "%"),
+      relatedTopics: extractSection(rawResearch, "related", "subtopic", "also", "example"),
+      suggestedAngle: extractSection(rawResearch, "unique angle", "contrarian", "underexplored", "fresh perspective")[0] || "",
+      commonQuestions: extractSection(rawResearch, "question", "ask", "faq", "paa", "people also"),
       rawResponse: rawResearch,
     };
   } catch (error) {
