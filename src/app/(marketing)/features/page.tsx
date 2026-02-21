@@ -2,6 +2,26 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import type { LucideIcon } from "lucide-react";
+import {
+  ArrowRight,
+  Sparkles,
+  Brain,
+  Globe,
+  Search,
+  FileText,
+  Plug,
+  Share2,
+  BarChart3,
+  Network,
+  CalendarDays,
+  Code2,
+  CheckCircle2,
+  Zap,
+  ImageIcon,
+  Link2,
+  Tags,
+} from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Features | StackSerp AI Content & SEO Platform",
@@ -19,168 +39,90 @@ export const metadata: Metadata = {
     canonical: "https://stackserp.com/features",
   },
 };
-import type { LucideIcon } from "lucide-react";
-import {
-  Zap,
-  ArrowRight,
-  Sparkles,
-  Brain,
-  Globe,
-  Search,
-  FileText,
-  Plug,
-  Share2,
-  BarChart3,
-  Network,
-  CalendarDays,
-  Code2,
-  CheckCircle2,
-} from "lucide-react";
 
-const features: { icon: LucideIcon; title: string; subtitle: string; description: string; steps: string[] }[] = [
+const features: { icon: LucideIcon; title: string; description: string; bullets: string[] }[] = [
   {
     icon: Brain,
     title: "AI Content Generation",
-    subtitle: "7-step pipeline from research to publish",
-    description:
-      "Our AI doesn't just write — it researches, outlines, drafts, matches your tone, optimizes for SEO, generates metadata, and creates a custom featured image. Every post goes through a rigorous 7-step pipeline to ensure quality.",
-    steps: [
-      "Deep topic research via real-time web analysis",
-      "Structured outline with H2/H3 headings",
-      "1,500–4,000 word long-form draft",
-      "Brand voice & tone matching",
-      "On-page SEO optimization",
-      "Meta title, description & schema markup",
-      "AI-generated featured image",
-    ],
+    description: "7-step pipeline: research, outline, draft, tone match, SEO optimize, metadata, and featured image.",
+    bullets: ["Real-time web research", "Brand voice matching", "1,500–2,500 word articles", "AI-generated featured image"],
   },
   {
     icon: Globe,
     title: "Multi-Website Management",
-    subtitle: "One dashboard, unlimited sites",
-    description:
-      "Manage content for all your websites from a single dashboard. Each site gets its own keyword queue, brand voice settings, publishing schedule, and analytics. Perfect for agencies and multi-brand businesses.",
-    steps: [
-      "Separate keyword queues per site",
-      "Individual brand voice & tone settings",
-      "Per-site publishing schedules",
-      "Cross-site analytics overview",
-      "Team permissions per website",
-    ],
+    description: "One dashboard for all your websites — each with its own keywords, settings, and publishing schedule.",
+    bullets: ["Separate keyword queues", "Individual brand voices", "Per-site analytics", "Team permissions"],
   },
   {
     icon: Search,
     title: "SEO Engine",
-    subtitle: "Automated on-page optimization",
-    description:
-      "Every piece of content is automatically optimized for search engines. From meta tags and structured data to internal linking and content scoring — our SEO engine handles the technical details so you can focus on strategy.",
-    steps: [
-      "Auto-generated meta titles & descriptions",
-      "JSON-LD structured data markup",
-      "Intelligent internal linking engine",
-      "Content quality & SEO scoring",
-      "IndexNow instant indexing",
-      "Canonical URL management",
-    ],
-  },
-  {
-    icon: FileText,
-    title: "Direct CMS Publishing",
-    subtitle: "Publish straight to your blog",
-    description:
-      "StackSerp generates content and pushes it directly to your existing blog or CMS. No extra hosting needed. Your posts go live on your own domain with full SEO optimization, featured images, and proper formatting.",
-    steps: [
-      "One-click publish to WordPress",
-      "Webhook support for any CMS",
-      "Automatic SEO meta tags",
-      "Featured image generation",
-      "Proper heading hierarchy & formatting",
-    ],
+    description: "Every post is automatically optimized with meta tags, structured data, and on-page SEO scoring.",
+    bullets: ["Auto meta titles & descriptions", "JSON-LD schema markup", "Content quality scoring", "IndexNow indexing"],
   },
   {
     icon: Plug,
     title: "CMS Integrations",
-    subtitle: "Push to WordPress, Ghost, Shopify & more",
-    description:
-      "Already have a CMS? StackSerp integrates directly. Push finished posts to WordPress, Ghost, Shopify, Webflow, or any platform via webhook. Content is formatted and optimized before it reaches your CMS.",
-    steps: [
-      "WordPress REST API integration",
-      "Ghost publishing",
-      "Shopify blog support",
-      "Webflow CMS collections",
-      "Custom webhook for any platform",
-    ],
+    description: "Push finished posts directly to WordPress, Ghost, Shopify, Webflow, or any platform via webhook.",
+    bullets: ["WordPress REST API", "Ghost & Shopify support", "Webflow CMS collections", "Custom webhooks"],
   },
   {
-    icon: Share2,
-    title: "Social Media Publishing",
-    subtitle: "Auto-post when content goes live",
-    description:
-      "Automatically share your published content on social media. StackSerp generates platform-optimized captions and posts to Twitter/X and LinkedIn the moment your article goes live.",
-    steps: [
-      "Twitter/X auto-posting",
-      "LinkedIn auto-sharing",
-      "Platform-optimized captions",
-      "Scheduled social posts",
-      "Engagement tracking",
-    ],
-  },
-  {
-    icon: BarChart3,
-    title: "Analytics & Reporting",
-    subtitle: "Track what matters",
-    description:
-      "Connect Google Search Console and track your content performance in real time. See which posts drive traffic, monitor keyword rankings, and measure the ROI of your content marketing efforts.",
-    steps: [
-      "Google Search Console integration",
-      "Per-post traffic analytics",
-      "Keyword ranking tracking",
-      "Content performance scoring",
-      "Monthly performance reports",
-    ],
+    icon: Link2,
+    title: "Internal Linking Engine",
+    description: "Automatically suggests and inserts contextual internal links to boost your site's link equity.",
+    bullets: ["Keyword-to-URL mapping", "Auto-insert in new posts", "Avoids duplicate links", "Manual link overrides"],
   },
   {
     icon: Network,
     title: "Topic Clusters",
-    subtitle: "AI-powered content strategy",
-    description:
-      "Let AI plan your content strategy. StackSerp generates topic clusters with a pillar page and supporting articles, creating a web of interlinked content that signals topical authority to search engines.",
-    steps: [
-      "AI-generated pillar content plans",
-      "Supporting article suggestions",
-      "Automatic internal link mapping",
-      "Topical authority scoring",
-      "Cluster performance analytics",
-    ],
+    description: "AI plans your entire content strategy — pillar pages and supporting articles that build topical authority.",
+    bullets: ["Pillar + cluster generation", "Auto internal link mapping", "Topical authority scoring", "Cluster analytics"],
+  },
+  {
+    icon: Share2,
+    title: "Social Publishing",
+    description: "Automatically share new posts on Twitter/X and LinkedIn with platform-optimized captions.",
+    bullets: ["Twitter/X auto-posting", "LinkedIn auto-sharing", "Captions per platform", "Scheduled social posts"],
+  },
+  {
+    icon: BarChart3,
+    title: "Analytics",
+    description: "Connect Google Search Console and track traffic, rankings, and content performance in real time.",
+    bullets: ["Search Console integration", "Per-post traffic data", "Keyword ranking tracking", "Monthly reports"],
   },
   {
     icon: CalendarDays,
     title: "Content Calendar",
-    subtitle: "Visual scheduling and planning",
-    description:
-      "See your entire content pipeline at a glance. The visual calendar shows scheduled, in-progress, and published posts across all your websites. Drag, reschedule, and plan ahead effortlessly.",
-    steps: [
-      "Visual month/week/day views",
-      "Drag-and-drop rescheduling",
-      "Multi-website calendar overlay",
-      "Publication status tracking",
-      "Bulk scheduling tools",
-    ],
+    description: "Visual calendar showing your entire content pipeline — scheduled, in-progress, and published.",
+    bullets: ["Month / week / day views", "Drag-and-drop scheduling", "Multi-site overlay", "Bulk scheduling"],
   },
   {
     icon: Code2,
-    title: "Public API",
-    subtitle: "Full REST API for custom integrations",
-    description:
-      "Build custom workflows with our comprehensive REST API. Programmatically create posts, manage keywords, trigger generation, and pull analytics data. Everything you can do in the dashboard, you can do via API.",
-    steps: [
-      "RESTful endpoints for all resources",
-      "API key authentication",
-      "Webhook event notifications",
-      "Rate limiting with generous quotas",
-      "Comprehensive API documentation",
-    ],
+    title: "Public REST API",
+    description: "Automate everything programmatically — create posts, trigger generation, pull analytics.",
+    bullets: ["API key auth", "Webhook events", "All dashboard features via API", "Full documentation"],
   },
+  {
+    icon: ImageIcon,
+    title: "AI Image Generation",
+    description: "Every post gets a unique, high-quality featured image generated by Imagen and uploaded automatically.",
+    bullets: ["Gemini + Imagen pipeline", "Niche-aware style selection", "1200×630 WebP output", "Custom prompt override"],
+  },
+  {
+    icon: Tags,
+    title: "Metadata & Schema",
+    description: "Auto-generated SEO metadata and structured data for every post — including social captions.",
+    bullets: ["Meta title & description", "Article schema markup", "Twitter + OG tags", "Social captions for 4 platforms"],
+  },
+];
+
+const pipeline = [
+  { step: "01", label: "Research", desc: "Real-time competitor & web analysis" },
+  { step: "02", label: "Outline", desc: "Structured H2/H3 content plan" },
+  { step: "03", label: "Draft", desc: "Full long-form article written" },
+  { step: "04", label: "Tone", desc: "Brand voice refinement pass" },
+  { step: "05", label: "SEO", desc: "Keywords, links & structure optimized" },
+  { step: "06", label: "Metadata", desc: "Meta tags, schema & social captions" },
+  { step: "07", label: "Image", desc: "AI-generated featured image" },
 ];
 
 export default function FeaturesPage() {
@@ -194,97 +136,111 @@ export default function FeaturesPage() {
             Full Feature Set
           </Badge>
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-6">
-            Everything you need for{" "}
-            <span className="text-primary">content marketing</span>
+            Everything you need to{" "}
+            <span className="text-primary">dominate search</span>
           </h1>
-          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            One platform replaces your entire content marketing stack. From AI
-            research to published, promoted, and tracked blog posts.
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto mb-8">
+            One platform replaces your entire content marketing stack — from research to published, promoted, and tracked.
           </p>
+          <div className="flex items-center justify-center gap-3">
+            <Button asChild size="lg">
+              <Link href="/register">
+                Start for Free <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button asChild size="lg" variant="outline">
+              <Link href="/pricing">View Pricing</Link>
+            </Button>
+          </div>
         </div>
       </section>
 
-      {/* Feature Sections */}
+      {/* 7-step pipeline */}
       <section className="pb-20 px-4">
-        <div className="max-w-6xl mx-auto space-y-32">
-          {features.map((feature, index) => {
-            const isEven = index % 2 === 0;
-            return (
-              <div
-                key={feature.title}
-                className={`flex flex-col gap-12 lg:gap-16 items-center ${
-                  isEven ? "lg:flex-row" : "lg:flex-row-reverse"
-                }`}
-              >
-                {/* Text */}
-                <div className="flex-1 max-w-xl">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 mb-4">
-                    {(() => { const Icon = feature.icon; return <Icon className="h-6 w-6 text-primary" />; })()}
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <Badge variant="outline" className="mb-3 px-3 py-1 text-xs">
+              <Zap className="mr-1 h-3 w-3" />
+              AI Pipeline
+            </Badge>
+            <h2 className="text-2xl md:text-3xl font-bold">From keyword to published in 7 steps</h2>
+            <p className="text-muted-foreground mt-2">Every post goes through the full pipeline automatically</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-3">
+            {pipeline.map((p, i) => (
+              <div key={p.step} className="relative flex flex-col items-center text-center gap-2">
+                {i < pipeline.length - 1 && (
+                  <div className="hidden md:block absolute top-5 left-[calc(50%+20px)] right-[-calc(50%-20px)] h-px bg-border w-full" />
+                )}
+                <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-bold text-primary z-10 bg-background">
+                  {p.step}
+                </div>
+                <p className="text-xs font-semibold">{p.label}</p>
+                <p className="text-xs text-muted-foreground leading-tight hidden sm:block">{p.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Feature Grid */}
+      <section className="pb-24 px-4">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-12">
+            <h2 className="text-2xl md:text-3xl font-bold mb-3">All features at a glance</h2>
+            <p className="text-muted-foreground max-w-xl mx-auto">
+              Everything StackSerp does — no fluff, no filler.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {features.map((f) => {
+              const Icon = f.icon;
+              return (
+                <div
+                  key={f.title}
+                  className="rounded-xl border bg-card p-5 flex flex-col gap-3 hover:shadow-sm transition-shadow"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                      <Icon className="h-4.5 w-4.5 text-primary" style={{ height: "1.125rem", width: "1.125rem" }} />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm leading-tight">{f.title}</p>
+                    </div>
                   </div>
-                  <p className="text-sm font-medium text-primary mb-2">
-                    {feature.subtitle}
-                  </p>
-                  <h2 className="text-3xl md:text-4xl font-bold mb-4">
-                    {feature.title}
-                  </h2>
-                  <p className="text-muted-foreground leading-relaxed mb-6">
-                    {feature.description}
-                  </p>
-                  <ul className="space-y-3">
-                    {feature.steps.map((step) => (
-                      <li
-                        key={step}
-                        className="flex items-start gap-2 text-sm"
-                      >
-                        <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                        <span>{step}</span>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{f.description}</p>
+                  <ul className="space-y-1.5 mt-auto">
+                    {f.bullets.map((b) => (
+                      <li key={b} className="flex items-start gap-2 text-xs text-muted-foreground">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                        {b}
                       </li>
                     ))}
                   </ul>
                 </div>
-
-                {/* Visual / Mockup Card */}
-                <div className="flex-1 w-full max-w-lg">
-                  <div className="bg-muted/50 border rounded-xl p-8 aspect-[4/3] flex items-center justify-center">
-                    <div className="text-center">
-                      <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10 mx-auto mb-4">
-                        {(() => { const Icon = feature.icon; return <Icon className="h-8 w-8 text-primary" />; })()}
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground">
-                        {feature.title}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </section>
 
-      {/* CTA Section */}
+      {/* CTA */}
       <section className="py-20 bg-muted/30 px-4">
-        <div className="max-w-4xl mx-auto text-center">
+        <div className="max-w-3xl mx-auto text-center">
           <h2 className="text-3xl md:text-4xl font-bold mb-4">
             Ready to automate your content marketing?
           </h2>
-          <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Join thousands of businesses using AI to grow their organic traffic.
-            Start free — no credit card required.
+          <p className="text-lg text-muted-foreground mb-8">
+            Start free — no credit card required. Your first 5 posts are on us.
           </p>
-          <div className="flex items-center justify-center gap-4">
-            <Button asChild size="lg" className="text-lg px-8 h-12">
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            <Button asChild size="lg" className="text-base px-8 h-12">
               <Link href="/register">
-                Start for Free
-                <ArrowRight className="ml-2 h-5 w-5" />
+                Get Started Free
+                <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
-            <Button
-              asChild
-              size="lg"
-              variant="outline"
-              className="text-lg px-8 h-12"
-            >
+            <Button asChild size="lg" variant="outline" className="text-base px-8 h-12">
               <Link href="/pricing">View Pricing</Link>
             </Button>
           </div>
