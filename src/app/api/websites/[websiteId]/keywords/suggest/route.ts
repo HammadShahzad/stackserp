@@ -6,13 +6,21 @@ import { verifyWebsiteAccess } from "@/lib/api-helpers";
 export const maxDuration = 60;
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ websiteId: string }> }
 ) {
   try {
     const { websiteId } = await params;
     const access = await verifyWebsiteAccess(websiteId);
     if ("error" in access) return access.error;
+
+    let seedKeyword = "";
+    try {
+      const body = await req.json();
+      seedKeyword = body.seedKeyword?.trim() || "";
+    } catch {
+      // No body or invalid JSON — that's fine, proceed without seed
+    }
 
     const website = await prisma.website.findUnique({
       where: { id: websiteId },
@@ -52,6 +60,10 @@ export async function POST(
       }>;
     }
 
+    const topicFocus = seedKeyword
+      ? `\n\n## FOCUS TOPIC: "${seedKeyword}"\nAll 20 keywords MUST be specifically about "${seedKeyword}" as it relates to ${website.brandName}'s ${website.niche} business. Do NOT suggest keywords outside the scope of "${seedKeyword}".`
+      : "";
+
     const result = await generateJSON<SuggestionsResponse>(
       `You are an SEO strategist for the following business. Generate 20 high-value blog keyword ideas STRICTLY relevant to this specific business.
 
@@ -59,10 +71,10 @@ export async function POST(
 - Brand: ${website.brandName}${websiteUrl ? ` (${websiteUrl})` : ""}
 - Niche: ${website.niche}
 - Description: ${website.description || "N/A"}
-- Target audience: ${website.targetAudience}
+- Target audience: ${website.targetAudience}${topicFocus}
 
 ## Rules:
-- Every keyword MUST directly relate to ${website.brandName}'s niche: "${website.niche}"
+- Every keyword MUST directly relate to ${website.brandName}'s niche: "${website.niche}"${seedKeyword ? `\n- Every keyword MUST be about or related to "${seedKeyword}"` : ""}
 - Do NOT suggest generic or off-topic keywords unrelated to this business
 - Focus on keywords that a potential customer of ${website.brandName} would actually search for
 - Long-tail keywords (3-6 words) that can support a 1000-2000 word blog post
@@ -81,7 +93,7 @@ Return JSON:
     }
   ]
 }`,
-      `You are an SEO strategist specializing in the ${website.niche} industry for ${website.brandName}. Return only valid JSON. Every keyword must be directly relevant to this specific business.`
+      `You are an SEO strategist specializing in the ${website.niche} industry for ${website.brandName}.${seedKeyword ? ` Focus all suggestions around the topic: "${seedKeyword}".` : ""} Return only valid JSON. Every keyword must be directly relevant to this specific business.`
     );
 
     // Filter out already existing keywords

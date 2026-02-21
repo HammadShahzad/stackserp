@@ -56,6 +56,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useGlobalJobs } from "@/components/dashboard/global-jobs-context";
 
 /* ──────────────────────────── Types ──────────────────────────── */
 
@@ -163,16 +164,42 @@ export default function GeneratorPage() {
     }
   }, [websiteId]);
 
+  const { addJob: addGlobalJob, updateJob: updateGlobalJob } = useGlobalJobs();
+  const CONTENT_STEPS = PIPELINE_STEPS.map((s) => s.id);
+
   const fetchJobs = useCallback(async () => {
     try {
       const res = await fetch(`/api/websites/${websiteId}/jobs`);
       if (!res.ok) return;
       const jobs: JobStatus[] = await res.json();
       setActiveJobs(jobs);
+
+      for (const j of jobs) {
+        const gid = `content-${j.id}`;
+        if (j.status === "QUEUED" || j.status === "PROCESSING") {
+          addGlobalJob({
+            id: gid,
+            type: "content",
+            label: j.input?.keyword || "Content generation",
+            websiteId,
+            href: `/dashboard/websites/${websiteId}/generator`,
+            status: "running",
+            progress: j.progress,
+            currentStep: j.currentStep || undefined,
+            steps: CONTENT_STEPS,
+          });
+        } else if (j.status === "COMPLETED" || j.status === "FAILED") {
+          updateGlobalJob(gid, {
+            status: j.status === "COMPLETED" ? "done" : "failed",
+            progress: j.status === "COMPLETED" ? 100 : j.progress,
+            error: j.error || undefined,
+          });
+        }
+      }
     } catch {
       // silent
     }
-  }, [websiteId]);
+  }, [websiteId, addGlobalJob, updateGlobalJob, CONTENT_STEPS]);
 
   const fetchClusters = useCallback(async () => {
     try {

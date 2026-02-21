@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useGlobalJobs } from "./global-jobs-context";
 
 interface Job {
   id: string;
@@ -49,6 +50,41 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const [hasJobs, setHasJobs] = useState(initialJobCount > 0);
+  const { addJob, updateJob, removeJob } = useGlobalJobs();
+
+  const syncToGlobal = useCallback(
+    (data: Job[]) => {
+      const active = data.filter(
+        (j) => j.status === "PROCESSING" || j.status === "QUEUED"
+      );
+      for (const j of active) {
+        const jobId = `content-${j.id}`;
+        addJob({
+          id: jobId,
+          type: "content",
+          label: j.input?.keyword || "Content generation",
+          websiteId,
+          href: `/dashboard/websites/${websiteId}/generator`,
+          status: "running",
+          progress: j.progress,
+          currentStep: j.currentStep || undefined,
+          steps: STEP_ORDER,
+        });
+      }
+      const finished = data.filter(
+        (j) => j.status === "COMPLETED" || j.status === "FAILED"
+      );
+      for (const j of finished) {
+        const jobId = `content-${j.id}`;
+        updateJob(jobId, {
+          status: j.status === "COMPLETED" ? "done" : "failed",
+          progress: j.status === "COMPLETED" ? 100 : j.progress,
+          error: j.error || undefined,
+        });
+      }
+    },
+    [websiteId, addJob, updateJob]
+  );
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -57,6 +93,7 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
       const data: Job[] = await res.json();
       setJobs(data);
       setHasJobs(data.length > 0);
+      syncToGlobal(data);
       if (data.length === 0 && pollRef.current) {
         clearInterval(pollRef.current);
         pollRef.current = null;
@@ -64,7 +101,7 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
     } catch {
       // silent
     }
-  }, [websiteId]);
+  }, [websiteId, syncToGlobal]);
 
   useEffect(() => {
     if (!hasJobs) return;

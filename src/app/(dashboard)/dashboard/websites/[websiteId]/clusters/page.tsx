@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,6 +41,7 @@ import {
   Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useGlobalJobs } from "@/components/dashboard/global-jobs-context";
 
 interface TopicCluster {
   id: string;
@@ -195,6 +197,7 @@ export default function ClustersPage() {
   const [suggestions, setSuggestions] = useState<SuggestedCluster[]>([]);
   const [stepStatus, setStepStatus] = useState<StepStatus | null>(null);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<number>>(new Set());
+  const [seedTopic, setSeedTopic] = useState("");
   const [newCluster, setNewCluster] = useState({
     name: "",
     pillarKeyword: "",
@@ -216,19 +219,45 @@ export default function ClustersPage() {
     fetchClusters();
   }, [fetchClusters]);
 
+  const { addJob, updateJob } = useGlobalJobs();
+  const clusterJobId = `cluster-gen-${websiteId}`;
+  const clusterSteps = ["crawling", "analyzing", "generating", "saving"];
+
   const handleAIGenerate = async () => {
     setIsGenerating(true);
     setStepStatus(null);
+
+    const label = seedTopic.trim()
+      ? `Clusters: "${seedTopic.trim()}"`
+      : "AI Topic Clusters";
+
+    addJob({
+      id: clusterJobId,
+      type: "clusters",
+      label,
+      websiteId,
+      href: `/dashboard/websites/${websiteId}/clusters`,
+      status: "running",
+      progress: 5,
+      currentStep: "crawling",
+      steps: clusterSteps,
+    });
+
     try {
+      updateJob(clusterJobId, { progress: 20, currentStep: "analyzing" });
+
       const res = await fetch(`/api/websites/${websiteId}/clusters`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ generate: true }),
+        body: JSON.stringify({ generate: true, seedTopic: seedTopic.trim() || undefined }),
       });
+
+      updateJob(clusterJobId, { progress: 80, currentStep: "generating" });
 
       const data = await res.json();
       if (!res.ok) {
         toast.error(data.error || "Generation failed");
+        updateJob(clusterJobId, { status: "failed", error: data.error || "Generation failed" });
         return;
       }
 
@@ -238,14 +267,17 @@ export default function ClustersPage() {
         setSuggestions([]);
         setSelectedSuggestions(new Set());
         setShowReviewDialog(true);
+        updateJob(clusterJobId, { status: "done", progress: 100 });
         return;
       }
 
       setSuggestions(data.suggestions);
       setSelectedSuggestions(new Set(data.suggestions.map((_: SuggestedCluster, i: number) => i)));
       setShowReviewDialog(true);
+      updateJob(clusterJobId, { status: "done", progress: 100 });
     } catch {
       toast.error("Network error — please try again");
+      updateJob(clusterJobId, { status: "failed", error: "Network error" });
     } finally {
       setIsGenerating(false);
     }
@@ -364,8 +396,36 @@ export default function ClustersPage() {
 
   return (
     <div className="space-y-6">
-      {/* Modal loading — visible regardless of scroll position */}
-      <AiGeneratingDialog open={isGenerating} />
+      {/* Inline progress banner — visible when AI generate is running */}
+      {isGenerating && (
+        <Card className="border-blue-200 bg-blue-50 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm text-blue-900">
+                  Generating topic clusters…
+                </p>
+                <p className="text-xs text-blue-700">
+                  {seedTopic.trim() ? `Topic: "${seedTopic.trim()}"` : "Based on your niche"}
+                </p>
+              </div>
+            </div>
+            <Progress value={50} className="h-1" />
+            <div className="flex items-center gap-1 flex-wrap px-4 py-2 bg-white/60">
+              {clusterSteps.map((stepId) => {
+                const labels: Record<string, string> = { crawling: "Crawling", analyzing: "Analyzing", generating: "Generating", saving: "Saving" };
+                return (
+                  <span key={stepId} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {labels[stepId] || stepId}
+                  </span>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between">
@@ -422,12 +482,33 @@ export default function ClustersPage() {
             </DialogContent>
           </Dialog>
 
-          <Button onClick={handleAIGenerate} disabled={isGenerating}>
-            {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            {isGenerating ? "Researching…" : "Generate with AI"}
-          </Button>
         </div>
       </div>
+
+      {/* Seed topic + generate */}
+      <Card>
+        <CardContent className="p-4">
+          <div className="flex gap-3 items-end">
+            <div className="flex-1 space-y-1.5">
+              <Label htmlFor="seedTopic" className="text-sm font-medium">Topic / Keyword</Label>
+              <Input
+                id="seedTopic"
+                placeholder="e.g., email marketing, invoicing software, SEO tools…"
+                value={seedTopic}
+                onChange={(e) => setSeedTopic(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !isGenerating && handleAIGenerate()}
+              />
+              <p className="text-xs text-muted-foreground">
+                Enter a topic to generate clusters around it, or leave empty to auto-detect from your niche
+              </p>
+            </div>
+            <Button onClick={handleAIGenerate} disabled={isGenerating} className="shrink-0">
+              {isGenerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              {isGenerating ? "Researching…" : "Generate"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Info card */}
       <Card className="bg-primary/5 border-primary/10">
@@ -454,13 +535,9 @@ export default function ClustersPage() {
             <Network className="h-12 w-12 text-muted-foreground/40 mb-4" />
             <h3 className="text-lg font-semibold mb-2">No topic clusters yet</h3>
             <p className="text-muted-foreground text-sm max-w-sm mb-6">
-              AI crawls your actual website then generates clusters
-              specific to your business — not generic templates.
+              Enter a topic above and click Generate — AI will research and
+              build a pillar + supporting keyword cluster around it.
             </p>
-            <Button onClick={handleAIGenerate} disabled={isGenerating}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Generate with AI
-            </Button>
           </CardContent>
         </Card>
       ) : (

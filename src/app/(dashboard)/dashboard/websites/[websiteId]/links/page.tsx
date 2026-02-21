@@ -36,6 +36,7 @@ import {
   Globe,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useGlobalJobs } from "@/components/dashboard/global-jobs-context";
 
 interface InternalLink {
   id: string;
@@ -250,33 +251,54 @@ export default function InternalLinksPage() {
     }
   };
 
+  const { addJob: addGlobalJob, updateJob: updateGlobalJob } = useGlobalJobs();
+  const linksJobId = `links-gen-${websiteId}`;
+
   const handleAutoGenerate = async () => {
     setIsGenerating(true);
     setStepStatus(null);
+
+    addGlobalJob({
+      id: linksJobId,
+      type: "links",
+      label: "Internal link suggestions",
+      websiteId,
+      href: `/dashboard/websites/${websiteId}/links`,
+      status: "running",
+      progress: 10,
+      currentStep: "crawling",
+      steps: ["crawling", "analyzing", "generating"],
+    });
+
     try {
+      updateGlobalJob(linksJobId, { progress: 30, currentStep: "analyzing" });
       const res = await fetch(`/api/websites/${websiteId}/links/suggest`, { method: "POST" });
+      updateGlobalJob(linksJobId, { progress: 80, currentStep: "generating" });
       const data = await res.json();
 
       if (!res.ok) {
         toast.error(data.error || "Failed to generate suggestions");
+        updateGlobalJob(linksJobId, { status: "failed", error: data.error || "Generation failed" });
         return;
       }
 
       setStepStatus(data.steps ?? null);
 
       if (!data.suggestions?.length) {
-        // Show review dialog anyway so user sees the status banner explaining WHY
         setSuggestions([]);
         setSelectedSuggestions(new Set());
         setShowReviewDialog(true);
+        updateGlobalJob(linksJobId, { status: "done", progress: 100 });
         return;
       }
 
       setSuggestions(data.suggestions);
       setSelectedSuggestions(new Set(data.suggestions.map((_: SuggestedLink, i: number) => i)));
       setShowReviewDialog(true);
+      updateGlobalJob(linksJobId, { status: "done", progress: 100 });
     } catch {
       toast.error("Network error — please try again");
+      updateGlobalJob(linksJobId, { status: "failed", error: "Network error" });
     } finally {
       setIsGenerating(false);
     }

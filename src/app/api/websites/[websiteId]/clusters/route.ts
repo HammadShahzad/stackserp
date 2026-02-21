@@ -81,7 +81,7 @@ export async function POST(
         take: 60,
       });
 
-      const seedTopic = website.niche || "general";
+      const seedTopic = body.seedTopic?.trim() || website.niche || "general";
 
       const preview = await generateClusterPreview(
         seedTopic,

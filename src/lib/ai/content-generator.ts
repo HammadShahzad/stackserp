@@ -7,7 +7,7 @@
  */
 import { generateText, generateJSON } from "./gemini";
 import { researchKeyword, ResearchResult } from "./research";
-import { generateBlogImage } from "../storage/image-generator";
+import { generateBlogImage, generateInlineImage } from "../storage/image-generator";
 import type { Website, BlogSettings } from "@prisma/client";
 
 type WebsiteWithSettings = Website & { blogSettings?: BlogSettings | null };
@@ -453,39 +453,127 @@ Output ONLY valid JSON (no markdown code fences) with this exact structure:
   // ─── STEP 7: IMAGE GENERATION ────────────────────────────────────
   let featuredImageUrl: string | undefined;
   let featuredImageAlt = metadata.featuredImageAlt || keyword;
+  const postSlug = metadata.slug || slugify(outline.title);
 
   if (includeImages && process.env.GOOGLE_AI_API_KEY) {
-    await progress("image", "Generating featured image with Imagen 4.0...");
+    await progress("image", "Generating images with Imagen 4.0...");
     try {
+      // Pick a consistent art style for all images in this post
       const artStyle = IMAGE_STYLES[Math.floor(Math.random() * IMAGE_STYLES.length)];
 
-      const imagePrompt = await generateText(
-        `Create 1 unique, creative image generation prompt for a blog hero image.
+      // Extract H2 sections for inline images
+      const h2Regex = /^## (.+)$/gm;
+      const h2Sections: { heading: string; startIdx: number }[] = [];
+      let match;
+      while ((match = h2Regex.exec(finalContent)) !== null) {
+        h2Sections.push({ heading: match[1], startIdx: match.index });
+      }
 
-Topic: "${keyword}"
-Article title: "${outline.title}"
+      // Ask AI to pick which sections deserve images + generate prompts for all images at once
+      const inlineCount = Math.min(3, Math.max(2, Math.floor(h2Sections.length / 2)));
+      const sectionList = h2Sections.map((s, i) => `${i + 1}. ${s.heading}`).join("\n");
+
+      interface ImagePrompts {
+        featured: string;
+        featuredAlt: string;
+        sections: { sectionIndex: number; prompt: string; alt: string }[];
+      }
+
+      const imagePrompts = await generateJSON<ImagePrompts>(
+        `Generate image prompts for a blog post about "${keyword}" titled "${outline.title}".
+
+Art style for ALL images: ${artStyle}
+
+## Sections in the article:
+${sectionList}
+
+Generate prompts for:
+1. ONE featured/hero image that captures the overall topic
+2. ${inlineCount} inline section images, each specific to its section content
 
 CRITICAL RULES:
-- DO NOT use generic "desk with laptop" or "office workspace" scenes. Be creative!
-- The image must visually represent the SPECIFIC topic, not just "business" in general
-- Use this art style: ${artStyle}
-- Think about metaphors, symbols, and creative scenes that capture the topic's essence
-- No text, no words, no letters in the image
-- The image should be eye-catching and unique, something that would stop a reader scrolling
+- Every image must be SPECIFIC to the topic "${keyword}", not generic stock imagery
+- DO NOT use "desk with laptop" or generic office scenes
+- Think of metaphors, diagrams, processes, or creative scenes that explain the concept
+- No text, words, or letters in any image
+- Each inline image should visually represent the specific section it's placed in
+- Use the same art style (${artStyle}) for visual consistency
 
-## Blog context (first 2000 chars):
-${finalContent.substring(0, 2000)}
-
-Output ONLY the detailed image prompt (2-3 sentences), nothing else.`,
-        "You are a creative director specializing in content marketing visuals."
+Return JSON:
+{
+  "featured": "detailed 2-3 sentence prompt for the hero image",
+  "featuredAlt": "descriptive alt text including the keyword",
+  "sections": [
+    { "sectionIndex": 1, "prompt": "detailed 2-3 sentence prompt for this section", "alt": "descriptive alt text" }
+  ]
+}`,
+        "You are a creative director specializing in content marketing visuals. Return valid JSON only."
       );
 
-      featuredImageUrl = await generateBlogImage(
-        imagePrompt,
-        `${metadata.slug || slugify(outline.title)}-featured`,
-        website.id,
-        outline.title
+      // Generate all images in parallel
+      const imageJobs: Promise<{ type: "featured" | "inline"; url: string; alt: string; sectionIndex?: number }>[] = [];
+
+      // Featured image
+      imageJobs.push(
+        generateBlogImage(
+          imagePrompts.featured,
+          `${postSlug}-featured`,
+          website.id,
+          outline.title
+        ).then((url) => ({ type: "featured" as const, url, alt: imagePrompts.featuredAlt || keyword }))
       );
+
+      // Inline images
+      for (let i = 0; i < (imagePrompts.sections || []).length; i++) {
+        const sec = imagePrompts.sections[i];
+        if (!sec?.prompt || sec.sectionIndex < 1 || sec.sectionIndex > h2Sections.length) continue;
+        imageJobs.push(
+          generateInlineImage(
+            sec.prompt,
+            postSlug,
+            i,
+            website.id
+          ).then((url) => ({ type: "inline" as const, url, alt: sec.alt || keyword, sectionIndex: sec.sectionIndex }))
+        );
+      }
+
+      const imageResults = await Promise.allSettled(imageJobs);
+
+      // Process results
+      for (const result of imageResults) {
+        if (result.status !== "fulfilled") continue;
+        const img = result.value;
+
+        if (img.type === "featured") {
+          featuredImageUrl = img.url;
+          featuredImageAlt = img.alt;
+        } else if (img.type === "inline" && img.sectionIndex != null) {
+          // Insert inline image after the H2 heading of the relevant section
+          const sectionIdx = img.sectionIndex - 1;
+          if (sectionIdx >= 0 && sectionIdx < h2Sections.length) {
+            const heading = h2Sections[sectionIdx].heading;
+            const h2Pattern = `## ${heading}`;
+            const h2Pos = finalContent.indexOf(h2Pattern);
+            if (h2Pos !== -1) {
+              // Find end of the heading line
+              const lineEnd = finalContent.indexOf("\n", h2Pos);
+              if (lineEnd !== -1) {
+                // Find end of the first paragraph after the heading
+                const nextDoubleNewline = finalContent.indexOf("\n\n", lineEnd + 1);
+                const insertPos = nextDoubleNewline !== -1 ? nextDoubleNewline : lineEnd;
+                const imgMarkdown = `\n\n![${img.alt}](${img.url})\n`;
+                finalContent = finalContent.slice(0, insertPos) + imgMarkdown + finalContent.slice(insertPos);
+
+                // Update h2Sections offsets after insertion
+                const shift = imgMarkdown.length;
+                for (let j = sectionIdx + 1; j < h2Sections.length; j++) {
+                  h2Sections[j].startIdx += shift;
+                }
+              }
+            }
+          }
+        }
+      }
     } catch (err) {
       console.error("Image generation failed:", err);
     }

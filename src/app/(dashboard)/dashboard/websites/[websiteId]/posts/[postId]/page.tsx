@@ -425,6 +425,8 @@ export default function PostEditorPage() {
                     metaDescription={post.metaDescription || ""}
                     focusKeyword={post.focusKeyword || ""}
                     wordCount={wordCount}
+                    featuredImage={post.featuredImage}
+                    featuredImageAlt={post.featuredImageAlt}
                   />
                 </CardContent>
               </Card>

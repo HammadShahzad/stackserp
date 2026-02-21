@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -54,6 +55,7 @@ import {
 import { toast } from "sonner";
 import Link from "next/link";
 import { AiLoading, AI_STEPS } from "@/components/ui/ai-loading";
+import { useGlobalJobs } from "@/components/dashboard/global-jobs-context";
 
 interface Keyword {
   id: string;
@@ -121,6 +123,7 @@ export default function KeywordsPage() {
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<Set<string>>(new Set());
   const [isAddingSuggestions, setIsAddingSuggestions] = useState(false);
+  const [suggestSeedKeyword, setSuggestSeedKeyword] = useState("");
 
   // Bulk generation
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
@@ -202,20 +205,56 @@ export default function KeywordsPage() {
   };
 
   // ── AI keyword suggestions ──────────────────────────────
+  const { addJob, updateJob } = useGlobalJobs();
+  const suggestJobId = `kw-suggest-${websiteId}`;
+  const suggestSteps = ["analyzing", "generating", "filtering"];
+
   const handleGetSuggestions = async () => {
     setIsLoadingSuggestions(true);
     setSuggestions([]);
     setSelectedSuggestions(new Set());
     setShowSuggestDialog(true);
+
+    const label = suggestSeedKeyword.trim()
+      ? `Keywords: "${suggestSeedKeyword.trim()}"`
+      : "AI Keyword Suggestions";
+
+    addJob({
+      id: suggestJobId,
+      type: "keywords",
+      label,
+      websiteId,
+      href: `/dashboard/websites/${websiteId}/keywords`,
+      status: "running",
+      progress: 10,
+      currentStep: "analyzing",
+      steps: suggestSteps,
+    });
+
     try {
+      updateJob(suggestJobId, { progress: 30, currentStep: "generating" });
       const res = await fetch(`/api/websites/${websiteId}/keywords/suggest`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seedKeyword: suggestSeedKeyword.trim() || undefined,
+        }),
       });
+      updateJob(suggestJobId, { progress: 80, currentStep: "filtering" });
       const data = await res.json();
-      if (res.ok) setSuggestions(data.suggestions || []);
-      else toast.error(data.error || "Failed to generate suggestions");
-    } catch { toast.error("Failed to generate suggestions"); }
-    finally { setIsLoadingSuggestions(false); }
+      if (res.ok) {
+        setSuggestions(data.suggestions || []);
+        updateJob(suggestJobId, { status: "done", progress: 100 });
+      } else {
+        toast.error(data.error || "Failed to generate suggestions");
+        updateJob(suggestJobId, { status: "failed", error: data.error || "Generation failed" });
+      }
+    } catch {
+      toast.error("Failed to generate suggestions");
+      updateJob(suggestJobId, { status: "failed", error: "Network error" });
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
   };
 
   const handleAddSuggestions = async () => {
@@ -309,6 +348,41 @@ export default function KeywordsPage() {
 
   return (
     <div className="space-y-6">
+      {/* Inline progress banner — visible when AI suggest is running */}
+      {isLoadingSuggestions && (
+        <Card className="border-blue-200 bg-blue-50 overflow-hidden">
+          <CardContent className="p-0">
+            <div className="flex items-center gap-3 px-4 py-3">
+              <Loader2 className="h-4 w-4 text-blue-600 animate-spin shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-sm text-blue-900">
+                  Generating keyword suggestions…
+                </p>
+                <p className="text-xs text-blue-700">
+                  {suggestSeedKeyword.trim() ? `Topic: "${suggestSeedKeyword.trim()}"` : "Based on your niche"}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" className="text-xs border-blue-300 text-blue-800 hover:bg-blue-100"
+                onClick={() => setShowSuggestDialog(true)}>
+                View <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </div>
+            <Progress value={isLoadingSuggestions ? 50 : 100} className="h-1" />
+            <div className="flex items-center gap-1 flex-wrap px-4 py-2 bg-white/60">
+              {suggestSteps.map((stepId) => {
+                const labels: Record<string, string> = { analyzing: "Analyzing", generating: "Generating", filtering: "Filtering" };
+                return (
+                  <span key={stepId} className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-xs bg-blue-100 text-blue-800">
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                    {labels[stepId] || stepId}
+                  </span>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h2 className="text-2xl font-bold">Keywords</h2>
@@ -328,10 +402,19 @@ export default function KeywordsPage() {
             Paste Keywords
           </Button>
 
-          <Button variant="outline" size="sm" onClick={handleGetSuggestions} disabled={isLoadingSuggestions}>
-            {isLoadingSuggestions ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-            AI Suggest
-          </Button>
+          <div className="flex items-center gap-1.5">
+            <Input
+              placeholder="Topic (optional)…"
+              value={suggestSeedKeyword}
+              onChange={(e) => setSuggestSeedKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && !isLoadingSuggestions && handleGetSuggestions()}
+              className="h-8 w-40 text-sm"
+            />
+            <Button variant="outline" size="sm" onClick={handleGetSuggestions} disabled={isLoadingSuggestions}>
+              {isLoadingSuggestions ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+              AI Suggest
+            </Button>
+          </div>
 
           {pendingKeywords.length > 0 && (
             <Button variant="outline" size="sm" onClick={() => setShowBulkGenDialog(true)}
@@ -550,7 +633,9 @@ export default function KeywordsPage() {
               AI Keyword Suggestions
             </DialogTitle>
             <DialogDescription>
-              AI-generated keyword ideas based on your niche. Select ones to add.
+              {suggestSeedKeyword.trim()
+                ? `Keywords focused on "${suggestSeedKeyword.trim()}". Select ones to add.`
+                : "AI-generated keyword ideas based on your niche. Select ones to add."}
             </DialogDescription>
           </DialogHeader>
 

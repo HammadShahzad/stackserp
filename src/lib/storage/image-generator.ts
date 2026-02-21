@@ -126,6 +126,30 @@ async function generateWithImagen(prompt: string, apiKey: string): Promise<Buffe
 }
 
 /**
+ * Generate a smaller inline/section image (800x450, no text overlay)
+ */
+export async function generateInlineImage(
+  prompt: string,
+  slug: string,
+  index: number,
+  websiteId: string
+): Promise<string> {
+  let apiKey = process.env.GOOGLE_AI_API_KEY;
+  if (!apiKey) throw new Error("GOOGLE_AI_API_KEY not configured");
+  apiKey = apiKey.replace(/\\n/g, "").trim();
+
+  const imageBytes = await generateWithImagen(prompt, apiKey);
+
+  const processed = await sharp(imageBytes)
+    .resize(800, 450, { fit: "cover", position: "center" })
+    .webp({ quality: 82 })
+    .toBuffer();
+
+  const key = `${websiteId}/blog-images/${slug}-inline-${index}.webp`;
+  return uploadToB2(processed, key, "image/webp");
+}
+
+/**
  * Generate and upload a thumbnail version too (400x225)
  */
 export async function generateThumbnail(
