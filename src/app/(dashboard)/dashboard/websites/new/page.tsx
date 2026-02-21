@@ -29,6 +29,8 @@ import {
   Brain,
   FileText,
   Eye,
+  Plus,
+  X,
 } from "lucide-react";
 import { AiLoading, AI_STEPS } from "@/components/ui/ai-loading";
 import Link from "next/link";
@@ -62,8 +64,23 @@ export default function NewWebsitePage() {
     targetLocation: "",
   });
 
-  const updateField = (field: string, value: string) => {
+  const [competitorInput, setCompetitorInput] = useState("");
+  const [keyProductInput, setKeyProductInput] = useState("");
+
+  const updateField = (field: string, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const addChip = (field: "competitors" | "keyProducts", input: string, setInput: (v: string) => void) => {
+    const val = input.trim().replace(/,$/, "");
+    if (val && !formData[field].includes(val)) {
+      updateField(field, [...formData[field], val]);
+    }
+    setInput("");
+  };
+
+  const removeChip = (field: "competitors" | "keyProducts", val: string) => {
+    updateField(field, formData[field].filter((v) => v !== val));
   };
 
   const canProceedStep1 = formData.name.trim() && formData.domain.trim();
@@ -376,78 +393,190 @@ export default function NewWebsitePage() {
 
       {/* Step 3: Content Strategy (AI-filled, editable) */}
       {step === 3 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              Content Strategy
-              {aiAnalyzed && (
-                <Badge
-                  variant="secondary"
-                  className="text-xs gap-1 bg-green-50 text-green-700 border-green-200"
-                >
-                  <CheckCircle2 className="h-3 w-3" />
-                  AI filled
-                </Badge>
-              )}
-              <Sparkles className="h-4 w-4 text-primary" />
-            </CardTitle>
-            <CardDescription>
-              Review the AI-generated content strategy — adjust anything that
-              needs fine-tuning
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="niche">Niche / Industry</Label>
-              <Input
-                id="niche"
-                placeholder="e.g., invoicing software for small businesses"
-                value={formData.niche}
-                onChange={(e) => updateField("niche", e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                What industry or topic area does your content cover?
-              </p>
-            </div>
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                Content Strategy
+                {aiAnalyzed && (
+                  <Badge
+                    variant="secondary"
+                    className="text-xs gap-1 bg-green-50 text-green-700 border-green-200"
+                  >
+                    <CheckCircle2 className="h-3 w-3" />
+                    AI filled
+                  </Badge>
+                )}
+                <Sparkles className="h-4 w-4 text-primary" />
+              </CardTitle>
+              <CardDescription>
+                Review and fine-tune your AI-generated content strategy
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="niche">Niche / Industry</Label>
+                <Input
+                  id="niche"
+                  placeholder="e.g., invoicing software for small businesses"
+                  value={formData.niche}
+                  onChange={(e) => updateField("niche", e.target.value)}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="description">Business Description</Label>
-              <Textarea
-                id="description"
-                placeholder="e.g., Cloud-based invoicing and accounting platform…"
-                value={formData.description}
-                onChange={(e) => updateField("description", e.target.value)}
-                rows={3}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="description">Business Description</Label>
+                <Textarea
+                  id="description"
+                  placeholder="e.g., Cloud-based invoicing and accounting platform…"
+                  value={formData.description}
+                  onChange={(e) => updateField("description", e.target.value)}
+                  rows={3}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="targetAudience">Target Audience</Label>
-              <Textarea
-                id="targetAudience"
-                placeholder="e.g., Freelancers, small business owners, accountants…"
-                value={formData.targetAudience}
-                onChange={(e) =>
-                  updateField("targetAudience", e.target.value)
-                }
-                rows={2}
-              />
-            </div>
+              <div className="space-y-2">
+                <Label htmlFor="targetAudience">Target Audience</Label>
+                <Textarea
+                  id="targetAudience"
+                  placeholder="e.g., Freelancers, small business owners, accountants…"
+                  value={formData.targetAudience}
+                  onChange={(e) => updateField("targetAudience", e.target.value)}
+                  rows={2}
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="tone">Writing Tone</Label>
-              <Input
-                id="tone"
-                placeholder="e.g., professional yet conversational"
-                value={formData.tone}
-                onChange={(e) => updateField("tone", e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                The writing style AI should use for your content
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="space-y-2">
+                <Label htmlFor="tone">Writing Tone</Label>
+                <Input
+                  id="tone"
+                  placeholder="e.g., professional yet conversational"
+                  value={formData.tone}
+                  onChange={(e) => updateField("tone", e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  The writing style AI should use for your content
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Brand Intelligence card */}
+          <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Brain className="h-4 w-4 text-primary" />
+                Brand Intelligence
+                {aiAnalyzed && (
+                  <Badge variant="secondary" className="text-xs gap-1 bg-green-50 text-green-700 border-green-200">
+                    <CheckCircle2 className="h-3 w-3" />
+                    AI filled
+                  </Badge>
+                )}
+              </CardTitle>
+              <CardDescription>
+                The more context you give, the more targeted and differentiated your AI articles become
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="uniqueValueProp">Unique Value Proposition</Label>
+                <Textarea
+                  id="uniqueValueProp"
+                  placeholder="e.g., The only platform that generates, publishes, and internally links SEO articles automatically — zero manual work."
+                  value={formData.uniqueValueProp}
+                  onChange={(e) => updateField("uniqueValueProp", e.target.value)}
+                  rows={2}
+                />
+                <p className="text-xs text-muted-foreground">
+                  What makes you different? AI uses this to write differentiating CTAs.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="targetLocation">Geographic Focus</Label>
+                <Input
+                  id="targetLocation"
+                  placeholder="e.g., United States, Global, UK and Europe"
+                  value={formData.targetLocation}
+                  onChange={(e) => updateField("targetLocation", e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  AI will use locally relevant prices, tools, and examples.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Key Products / Features</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add a product or feature name, press Enter"
+                    value={keyProductInput}
+                    onChange={(e) => setKeyProductInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === ",") {
+                        e.preventDefault();
+                        addChip("keyProducts", keyProductInput, setKeyProductInput);
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => addChip("keyProducts", keyProductInput, setKeyProductInput)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {formData.keyProducts.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {formData.keyProducts.map((p) => (
+                      <span key={p} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                        {p}
+                        <button type="button" onClick={() => removeChip("keyProducts", p)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>Top Competitors</Label>
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Add a competitor name, press Enter"
+                    value={competitorInput}
+                    onChange={(e) => setCompetitorInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === ",") {
+                        e.preventDefault();
+                        addChip("competitors", competitorInput, setCompetitorInput);
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => addChip("competitors", competitorInput, setCompetitorInput)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+                {formData.competitors.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {formData.competitors.map((c) => (
+                      <span key={c} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-xs font-medium">
+                        {c}
+                        <button type="button" onClick={() => removeChip("competitors", c)}>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  AI uses this to write differentiated positioning content.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Navigation Buttons */}

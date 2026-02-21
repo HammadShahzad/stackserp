@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Card,
@@ -182,8 +182,10 @@ function computeNextPublishDate(
 
 export default function WebsiteSettingsPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const websiteId = params.websiteId as string;
   const { data: sessionData } = useSession();
+  const defaultTab = searchParams.get("tab") || "general";
   const isAdmin = sessionData?.user?.systemRole === "ADMIN";
   const [website, setWebsite] = useState<WebsiteData | null>(null);
   const [blogSettings, setBlogSettings] = useState<BlogSettingsData>({
@@ -311,7 +313,7 @@ export default function WebsiteSettingsPage() {
         </Button>
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs defaultValue={defaultTab}>
         <TabsList className="flex-wrap h-auto">
           <TabsTrigger value="general">
             <Globe className="mr-2 h-4 w-4" />

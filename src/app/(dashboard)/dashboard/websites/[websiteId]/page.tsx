@@ -20,6 +20,7 @@ import {
   Plus,
   CheckCircle2,
   AlertCircle,
+  Brain,
 } from "lucide-react";
 import Link from "next/link";
 import { ActiveJobsBanner } from "@/components/dashboard/active-jobs-banner";
@@ -133,6 +134,29 @@ export default async function WebsiteDashboard({
           websiteId={websiteId}
           initialJobCount={activeJobs + generatingKeywords}
         />
+      )}
+
+      {/* Brand Intelligence completion prompt */}
+      {!website.uniqueValueProp && (
+        <div className="flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-background to-primary/5 p-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+              <Brain className="h-5 w-5 text-primary" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-sm">Supercharge your AI content</p>
+              <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                Add your USP, competitors, key products, and target market — AI articles will be dramatically more targeted and unique.
+              </p>
+            </div>
+          </div>
+          <Button asChild size="sm" className="shrink-0">
+            <Link href={`/dashboard/websites/${websiteId}/settings?tab=brand`}>
+              <Brain className="mr-1.5 h-3.5 w-3.5" />
+              Complete Profile
+            </Link>
+          </Button>
+        </div>
       )}
 
       {/* Stats Grid */}
