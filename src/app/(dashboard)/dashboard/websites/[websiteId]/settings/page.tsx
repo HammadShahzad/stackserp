@@ -243,12 +243,15 @@ export default function WebsiteSettingsPage() {
   };
 
   const handleSaveBlogSettings = async () => {
+    const { finalWebsite, finalBlogSettings } = buildFinalData();
+    if (finalWebsite) setWebsite(finalWebsite);
+    setBlogSettings(finalBlogSettings);
     setIsSavingBlogSettings(true);
     try {
       const res = await fetch(`/api/websites/${websiteId}/blog-settings`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(blogSettings),
+        body: JSON.stringify(finalBlogSettings),
       });
       if (res.ok) toast.success("Content settings saved");
       else toast.error("Failed to save content settings");
@@ -259,19 +262,65 @@ export default function WebsiteSettingsPage() {
     }
   };
 
+  // Build final website/blogSettings objects that include any pending chip inputs
+  const buildFinalData = () => {
+    const finalWebsite = website ? { ...website } : null;
+    const finalBlogSettings = { ...blogSettings };
+
+    if (finalWebsite) {
+      if (competitorInput.trim()) {
+        const val = competitorInput.trim();
+        if (!finalWebsite.competitors?.includes(val)) {
+          finalWebsite.competitors = [...(finalWebsite.competitors || []), val];
+        }
+        setCompetitorInput("");
+      }
+      if (keyProductInput.trim()) {
+        const val = keyProductInput.trim();
+        if (!finalWebsite.keyProducts?.includes(val)) {
+          finalWebsite.keyProducts = [...(finalWebsite.keyProducts || []), val];
+        }
+        setKeyProductInput("");
+      }
+    }
+    if (avoidTopicInput.trim()) {
+      const val = avoidTopicInput.trim();
+      if (!finalBlogSettings.avoidTopics?.includes(val)) {
+        finalBlogSettings.avoidTopics = [...(finalBlogSettings.avoidTopics || []), val];
+      }
+      setAvoidTopicInput("");
+    }
+
+    return { finalWebsite, finalBlogSettings };
+  };
+
   const handleSave = async () => {
     if (!website) return;
+    const { finalWebsite, finalBlogSettings } = buildFinalData();
+    if (!finalWebsite) return;
+    // Sync flushed chips into state so UI reflects it
+    setWebsite(finalWebsite);
+    setBlogSettings(finalBlogSettings);
     setIsSaving(true);
     try {
-      const res = await fetch(`/api/websites/${websiteId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(website),
-      });
-      if (res.ok) {
-        toast.success("Settings saved");
+      const [siteRes, bsRes] = await Promise.all([
+        fetch(`/api/websites/${websiteId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(finalWebsite),
+        }),
+        fetch(`/api/websites/${websiteId}/blog-settings`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(finalBlogSettings),
+        }),
+      ]);
+      if (siteRes.ok && bsRes.ok) {
+        toast.success("All settings saved");
+      } else if (!siteRes.ok) {
+        toast.error("Failed to save website settings");
       } else {
-        toast.error("Failed to save settings");
+        toast.error("Failed to save content settings");
       }
     } catch {
       toast.error("Failed to save settings");
@@ -309,7 +358,7 @@ export default function WebsiteSettingsPage() {
           ) : (
             <Save className="mr-2 h-4 w-4" />
           )}
-          Save Changes
+          Save All Settings
         </Button>
       </div>
 

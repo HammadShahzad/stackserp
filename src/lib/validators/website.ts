@@ -16,6 +16,11 @@ export const createWebsiteSchema = z.object({
   brandName: z.string().min(1, "Brand name is required").max(100),
   brandUrl: z.string().url("Enter a valid URL"),
   primaryColor: z.string().default("#4F46E5"),
+  // Brand Intelligence — pre-filled by AI analysis, editable by user
+  uniqueValueProp: z.string().optional(),
+  competitors: z.array(z.string()).default([]),
+  keyProducts: z.array(z.string()).default([]),
+  targetLocation: z.string().optional(),
 });
 
 export const updateWebsiteSchema = createWebsiteSchema.partial().extend({

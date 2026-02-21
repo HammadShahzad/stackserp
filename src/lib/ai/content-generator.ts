@@ -25,6 +25,7 @@ export interface WebsiteContext {
   ctaText?: string;
   ctaUrl?: string;
   avoidTopics?: string[];
+  writingStyle?: string; // from BlogSettings (informative/conversational/technical/etc.)
   // Brand Intelligence
   uniqueValueProp?: string;
   competitors?: string[];
@@ -102,11 +103,24 @@ function getImageStyle(niche: string): string {
   return "clean professional illustration, modern and relevant to the topic";
 }
 
+const WRITING_STYLE_GUIDANCE: Record<string, string> = {
+  informative: "Clear, factual, and educational. Use data, examples, and step-by-step explanations. Authoritative but accessible.",
+  conversational: "Friendly and approachable, like talking to a knowledgeable colleague. Use contractions, direct address ('you'), and relatable analogies.",
+  technical: "Precise and detailed, written for practitioners. Use correct terminology, include code snippets or configs where relevant, avoid over-simplifying.",
+  storytelling: "Narrative-driven. Open with a story or scenario. Use anecdotes, case studies, and real-world examples to illustrate points.",
+  persuasive: "Benefit-focused and compelling. Lead with outcomes, use social proof, and create urgency. Every section should move the reader toward action.",
+  humorous: "Light-hearted, witty, and fun — but always substantive. Use humor to make complex topics memorable, never at the expense of accuracy.",
+};
+
 function buildSystemPrompt(ctx: WebsiteContext): string {
+  const styleGuidance = ctx.writingStyle && WRITING_STYLE_GUIDANCE[ctx.writingStyle]
+    ? WRITING_STYLE_GUIDANCE[ctx.writingStyle]
+    : null;
+
   let prompt = `You are a professional blog writer for ${ctx.brandName} (${ctx.brandUrl}).
 ${ctx.brandName} is a ${ctx.description}.
 Your target audience is: ${ctx.targetAudience}
-Writing tone: ${ctx.tone}
+Writing tone: ${ctx.tone}${styleGuidance ? `\nWriting style: ${ctx.writingStyle} — ${styleGuidance}` : ""}
 Niche: ${ctx.niche}
 ${ctx.targetLocation ? `Geographic focus: ${ctx.targetLocation} — use locally relevant data, examples, pricing, and market references.` : ""}
 ${ctx.uniqueValueProp ? `${ctx.brandName}'s unique value: ${ctx.uniqueValueProp}` : ""}
@@ -114,7 +128,7 @@ ${ctx.keyProducts?.length ? `Key products/features to reference naturally when r
 ${ctx.competitors?.length ? `Main competitors: ${ctx.competitors.join(", ")} — write content that positions ${ctx.brandName} as the better choice without directly attacking them.` : ""}
 
 RULES:
-- Write in a ${ctx.tone} style
+- Write in a ${ctx.tone} style${styleGuidance ? `, applying the ${ctx.writingStyle} writing approach described above` : ""}
 - Naturally mention ${ctx.brandName} where relevant (not forced)
 ${ctx.uniqueValueProp ? `- When recommending tools or solutions, position ${ctx.brandName} using its unique value: "${ctx.uniqueValueProp}"` : ""}
 ${ctx.ctaText && ctx.ctaUrl ? `- Include a call-to-action: "${ctx.ctaText}" linking to ${ctx.ctaUrl}` : ""}
@@ -201,6 +215,7 @@ export async function generateBlogPost(
     ctaText: website.blogSettings?.ctaText ?? undefined,
     ctaUrl: website.blogSettings?.ctaUrl ?? undefined,
     avoidTopics: website.blogSettings?.avoidTopics ?? undefined,
+    writingStyle: website.blogSettings?.writingStyle ?? undefined,
     uniqueValueProp: website.uniqueValueProp ?? undefined,
     competitors: website.competitors?.length ? website.competitors : undefined,
     keyProducts: website.keyProducts?.length ? website.keyProducts : undefined,
