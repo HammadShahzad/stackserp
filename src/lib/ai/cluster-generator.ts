@@ -108,15 +108,30 @@ Stay strictly within the ${niche} niche.`,
   }
 }
 
+export interface PublishedPost {
+  title: string;
+  focusKeyword: string;
+}
+
 export async function generateClusterPreview(
   seedTopic: string,
   website: ClusterWebsite,
   existingKeywords: string[] = [],
+  publishedPosts: PublishedPost[] = [],
+  avoidTopics: string[] = [],
 ): Promise<ClusterPreview> {
   const research = await researchSeedTopic(seedTopic, website);
 
   const existingSection = existingKeywords.length > 0
-    ? `\n\nExisting keywords already in the queue (avoid duplicates):\n${existingKeywords.slice(0, 40).join(", ")}`
+    ? `\n\n## Keywords Already in Queue (NEVER duplicate these):\n${existingKeywords.slice(0, 40).join(", ")}`
+    : "";
+
+  const publishedSection = publishedPosts.length > 0
+    ? `\n\n## Already Published Blog Posts (NEVER duplicate these titles, topics, or search intent):\n${publishedPosts.slice(0, 60).map(p => `- "${p.title}"${p.focusKeyword ? ` [keyword: ${p.focusKeyword}]` : ""}`).join("\n")}`
+    : "";
+
+  const exclusionSection = avoidTopics.length > 0
+    ? `\n\n## Excluded Topics (NEVER suggest keywords about these):\n${avoidTopics.map(t => `- ${t}`).join("\n")}`
     : "";
 
   const extraContext = [
@@ -125,6 +140,10 @@ export async function generateClusterPreview(
     website.keyProducts?.length ? `- Products/Features: ${website.keyProducts.join(", ")}` : "",
     website.targetLocation ? `- Primary market: ${website.targetLocation}` : "",
   ].filter(Boolean).join("\n");
+
+  const productInstruction = website.keyProducts?.length
+    ? `- Product names (${website.keyProducts.join(", ")}) MAY appear in keywords when it makes sense, e.g. "how to install [Product] on [vehicle]". Do NOT force product names into every keyword — only where the search intent naturally includes the product.`
+    : "";
 
   const result = await generateJSON<ClusterPreview>(
     `You are an SEO content strategist for ${website.brandName}, a ${website.niche} business. Create a topic cluster for "${seedTopic}".
@@ -137,17 +156,31 @@ export async function generateClusterPreview(
 ${extraContext}
 
 ## Research Data:
-${research.substring(0, 4000)}${existingSection}
+${research.substring(0, 4000)}${existingSection}${publishedSection}${exclusionSection}
 
-## STRICT RULES — read carefully:
-- Every single keyword MUST be directly about "${seedTopic}" as it relates to ${website.niche}
-- Do NOT suggest generic keywords unrelated to "${seedTopic}" or the ${website.niche} niche
-- Do NOT invent topics that aren't covered in the research or aren't clearly part of this niche
+## ANTI-CANNIBALIZATION RULES (most important):
+- Review the published posts list above CAREFULLY before generating any keyword
+- Do NOT generate keywords that target the same TOPIC as an existing post, even if worded differently
+- Do NOT generate keywords that target the same SEARCH INTENT as an existing post
+- Example: if "Wind Noise Reduction Guide for Cars" exists, do NOT suggest "how to reduce wind noise in car" — instead target a different angle like "wind noise fix for specific door seal types" or a different vehicle zone
+- Each new keyword must fill a GAP that no existing post covers
+- Think: "Would Google see this new keyword as a different page from the existing posts?" If no, skip it.
+
+## KEYWORD QUALITY RULES:
+- Every keyword MUST relate directly to "${seedTopic}" within ${website.niche}
+- Target LONG-TAIL, LOW-COMPETITION keywords (4-7 words each) — easier to rank for
+- Keywords should be specific: include vehicle types, specific parts, symptoms, or scenarios when possible
 - All keywords must be things ${website.targetAudience} would actually search for
-- Pillar: ONE broad keyword directly about "${seedTopic}" (2500-4000 words)
-- Supporting: 8-12 specific long-tail variations of "${seedTopic}" (1200-2000 words each, 3-6 words)
-- Each keyword must target a distinct, specific angle of "${seedTopic}"
-- Do NOT repeat any existing keywords listed above
+- Do NOT suggest generic 1-2 word head terms — they are too competitive
+- Do NOT invent topics that aren't covered in the research or aren't clearly part of this niche
+${productInstruction}
+
+## OUTPUT STRUCTURE:
+- Pillar: ONE broad keyword about "${seedTopic}" (2500-4000 words, 4-6 words long)
+- Supporting: 8-12 specific long-tail variations (1200-2000 words each, 5-8 words long)
+- Each keyword targets a UNIQUE angle: different vehicle part, different problem, different user scenario, or different buying stage
+- Mix search intents: ~60% informational, ~25% commercial, ~15% transactional
+- For each keyword, write a short "description" explaining the UNIQUE angle this post would cover that no existing post already handles
 
 Return valid JSON only:
 {
@@ -155,18 +188,18 @@ Return valid JSON only:
   "description": "1-2 sentence description of this cluster",
   "keywords": [
     {
-      "keyword": "exact keyword phrase",
+      "keyword": "exact keyword phrase (4-7 words)",
       "role": "pillar",
       "searchIntent": "informational",
       "suggestedWordCount": 3000,
-      "description": "what this article covers in 1-2 sentences"
+      "description": "what this article covers and why it doesn't overlap with existing posts"
     },
     {
-      "keyword": "specific long-tail keyword about ${seedTopic}",
+      "keyword": "specific long-tail keyword about ${seedTopic} (5-8 words)",
       "role": "supporting",
       "searchIntent": "informational",
       "suggestedWordCount": 1500,
-      "description": "what this article covers"
+      "description": "the unique angle and gap this fills"
     }
   ]
 }`,

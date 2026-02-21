@@ -63,26 +63,35 @@ export async function POST(
 
     // ─── AI Generate: crawl website → research → build clusters ───
     if (body.generate) {
-      const website = await prisma.website.findUnique({
-        where: { id: websiteId },
-        select: {
-          brandUrl: true, brandName: true, niche: true,
-          description: true, targetAudience: true,
-          uniqueValueProp: true, competitors: true,
-          keyProducts: true, targetLocation: true,
-        },
-      });
+      const [website, existingKws, publishedPosts] = await Promise.all([
+        prisma.website.findUnique({
+          where: { id: websiteId },
+          select: {
+            brandUrl: true, brandName: true, niche: true,
+            description: true, targetAudience: true,
+            uniqueValueProp: true, competitors: true,
+            keyProducts: true, targetLocation: true,
+            blogSettings: { select: { avoidTopics: true } },
+          },
+        }),
+        prisma.blogKeyword.findMany({
+          where: { websiteId },
+          select: { keyword: true },
+          take: 60,
+        }),
+        prisma.blogPost.findMany({
+          where: { websiteId, status: { in: ["PUBLISHED", "REVIEW"] } },
+          select: { title: true, focusKeyword: true, slug: true },
+          orderBy: { publishedAt: "desc" },
+          take: 100,
+        }),
+      ]);
+
       if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
 
       if (!website.brandUrl && !website.niche) {
         return NextResponse.json({ error: "Set your website URL and niche in settings first" }, { status: 400 });
       }
-
-      const existingKws = await prisma.blogKeyword.findMany({
-        where: { websiteId },
-        select: { keyword: true },
-        take: 60,
-      });
 
       const seedTopic = body.seedTopic?.trim() || website.niche || "general";
 
@@ -90,6 +99,8 @@ export async function POST(
         seedTopic,
         website,
         existingKws.map(k => k.keyword),
+        publishedPosts.map(p => ({ title: p.title, focusKeyword: p.focusKeyword || "" })),
+        website.blogSettings?.avoidTopics || [],
       );
 
       const suggestions = [{
@@ -109,27 +120,38 @@ export async function POST(
 
     // ─── Preview with seed topic: research + generate cluster ─────
     if (body.preview && body.seedTopic) {
-      const website = await prisma.website.findUnique({
-        where: { id: websiteId },
-        select: {
-          brandUrl: true, brandName: true, niche: true,
-          description: true, targetAudience: true,
-          uniqueValueProp: true, competitors: true,
-          keyProducts: true, targetLocation: true,
-        },
-      });
-      if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
+      const [website, existingKws, publishedPosts] = await Promise.all([
+        prisma.website.findUnique({
+          where: { id: websiteId },
+          select: {
+            brandUrl: true, brandName: true, niche: true,
+            description: true, targetAudience: true,
+            uniqueValueProp: true, competitors: true,
+            keyProducts: true, targetLocation: true,
+            blogSettings: { select: { avoidTopics: true } },
+          },
+        }),
+        prisma.blogKeyword.findMany({
+          where: { websiteId },
+          select: { keyword: true },
+          take: 60,
+        }),
+        prisma.blogPost.findMany({
+          where: { websiteId, status: { in: ["PUBLISHED", "REVIEW"] } },
+          select: { title: true, focusKeyword: true, slug: true },
+          orderBy: { publishedAt: "desc" },
+          take: 100,
+        }),
+      ]);
 
-      const existingKws = await prisma.blogKeyword.findMany({
-        where: { websiteId },
-        select: { keyword: true },
-        take: 60,
-      });
+      if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
 
       const preview = await generateClusterPreview(
         body.seedTopic.trim(),
         website,
         existingKws.map(k => k.keyword),
+        publishedPosts.map(p => ({ title: p.title, focusKeyword: p.focusKeyword || "" })),
+        website.blogSettings?.avoidTopics || [],
       );
 
       return NextResponse.json({ preview: true, ...preview });
