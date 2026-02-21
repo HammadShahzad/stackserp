@@ -25,22 +25,6 @@ export async function getCurrentOrganization() {
           websites: {
             where: { status: { not: "DELETED" } },
             orderBy: { createdAt: "asc" },
-            // Only select fields needed by the layout — avoids schema-mismatch
-            // errors when new columns are added but migrations haven't run yet
-            select: {
-              id: true,
-              name: true,
-              domain: true,
-              subdomain: true,
-              status: true,
-              niche: true,
-              brandName: true,
-              brandUrl: true,
-              primaryColor: true,
-              faviconUrl: true,
-              createdAt: true,
-              organizationId: true,
-            },
           },
         },
       },
