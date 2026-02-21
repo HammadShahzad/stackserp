@@ -76,14 +76,26 @@ export async function PATCH(
       "googleAnalyticsId", "gscPropertyUrl", "twitterApiKey",
       "twitterApiSecret", "twitterAccessToken", "twitterAccessSecret",
       "linkedinAccessToken", "sitemapEnabled", "robotsTxt", "indexNowKey",
-      // Brand Intelligence
       "uniqueValueProp", "competitors", "keyProducts", "targetLocation",
+      "status",
     ];
 
     const updateData: Record<string, unknown> = {};
     for (const field of allowedFields) {
       if (field in body) {
         updateData[field] = body[field];
+      }
+    }
+
+    // Restrict status transitions
+    if (updateData.status) {
+      const validTransitions: Record<string, string[]> = {
+        ACTIVE: ["PAUSED", "DELETED"],
+        PAUSED: ["ACTIVE", "DELETED"],
+      };
+      const allowed = validTransitions[website.status] || [];
+      if (!allowed.includes(updateData.status as string)) {
+        return NextResponse.json({ error: `Cannot transition from ${website.status} to ${updateData.status}` }, { status: 400 });
       }
     }
 

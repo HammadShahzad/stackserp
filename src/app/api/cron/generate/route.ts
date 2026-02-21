@@ -127,11 +127,11 @@ export async function POST(req: Request) {
           keywordId: keyword.id,
           keyword: keyword.keyword,
           websiteId: website.id,
-          contentLength: (["SHORT", "MEDIUM"].includes(website.blogSettings?.contentLength || "") ? website.blogSettings?.contentLength : "MEDIUM") as "SHORT" | "MEDIUM",
+          contentLength: (["SHORT", "MEDIUM", "LONG", "PILLAR"].includes(website.blogSettings?.contentLength || "") ? website.blogSettings?.contentLength : "MEDIUM") as "SHORT" | "MEDIUM" | "LONG" | "PILLAR",
           includeImages: website.blogSettings?.includeImages ?? true,
           includeFAQ: website.blogSettings?.includeFAQ ?? true,
           includeTableOfContents: website.blogSettings?.includeTableOfContents ?? true,
-          autoPublish: website.blogSettings?.autoPublish ?? false,
+          autoPublish: website.autoPublish,
         });
 
         triggerWorker(jobId);

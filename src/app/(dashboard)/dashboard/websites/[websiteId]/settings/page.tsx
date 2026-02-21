@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import {
   Card,
@@ -25,6 +25,13 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Loader2, Save, Globe, Palette, Bot, Share2, Code, AlertTriangle,
   CheckCircle2, XCircle, Download, Eye, EyeOff, ExternalLink, Plug,
@@ -54,7 +61,11 @@ interface WebsiteData {
   gscPropertyUrl: string | null;
   indexNowKey: string | null;
   twitterApiKey: string | null;
+  twitterApiSecret: string | null;
+  twitterAccessToken: string | null;
+  twitterAccessSecret: string | null;
   linkedinAccessToken: string | null;
+  status: string;
   // Brand Intelligence
   uniqueValueProp: string | null;
   competitors: string[];
@@ -183,6 +194,7 @@ function computeNextPublishDate(
 export default function WebsiteSettingsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const websiteId = params.websiteId as string;
   const { data: sessionData } = useSession();
   const defaultTab = searchParams.get("tab") || "general";
@@ -200,77 +212,138 @@ export default function WebsiteSettingsPage() {
   const [keyProductInput, setKeyProductInput] = useState("");
   const [avoidTopicInput, setAvoidTopicInput] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [aiData, setAiData] = useState<Record<string, unknown> | null>(null);
+  const [isPausing, setIsPausing] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState("");
 
-  const handleAIAutoFill = async (sections: ("general" | "brand" | "content")[]) => {
+  // AI preview dialog state
+  interface AIPreview {
+    brandName: string; brandUrl: string; primaryColor: string;
+    niche: string; description: string; targetAudience: string; tone: string;
+    uniqueValueProp: string; competitors: string[]; keyProducts: string[];
+    targetLocation: string; suggestedCtaText: string; suggestedCtaUrl: string;
+    suggestedWritingStyle: string;
+  }
+  const [aiPreview, setAiPreview] = useState<AIPreview | null>(null);
+  const [aiDialogOpen, setAiDialogOpen] = useState(false);
+  const [aiToggles, setAiToggles] = useState<Record<string, boolean>>({});
+
+  const AI_FIELDS: { key: keyof AIPreview; label: string; group: string }[] = [
+    { key: "niche", label: "Niche", group: "General" },
+    { key: "description", label: "Description", group: "General" },
+    { key: "targetAudience", label: "Target Audience", group: "General" },
+    { key: "brandName", label: "Brand Name", group: "Brand" },
+    { key: "brandUrl", label: "Brand URL", group: "Brand" },
+    { key: "tone", label: "Writing Tone", group: "Brand" },
+    { key: "primaryColor", label: "Brand Color", group: "Brand" },
+    { key: "uniqueValueProp", label: "Value Proposition", group: "Brand" },
+    { key: "targetLocation", label: "Location", group: "Brand" },
+    { key: "competitors", label: "Competitors", group: "Brand" },
+    { key: "keyProducts", label: "Products/Features", group: "Brand" },
+    { key: "suggestedCtaText", label: "CTA Text", group: "Content" },
+    { key: "suggestedCtaUrl", label: "CTA URL", group: "Content" },
+    { key: "suggestedWritingStyle", label: "Writing Style", group: "Content" },
+  ];
+
+  const handleAIResearch = async () => {
     if (!website) return;
     setIsAnalyzing(true);
     try {
-      // Use cached AI data if available, otherwise fetch
-      let data = aiData;
-      if (!data) {
-        const res = await fetch("/api/websites/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: website.name || website.brandName, domain: website.domain }),
-        });
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({}));
-          toast.error(err.error || "AI analysis failed");
-          return;
-        }
-        data = await res.json();
-        setAiData(data);
+      const res = await fetch("/api/websites/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: website.name || website.brandName, domain: website.domain }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast.error(err.error || "AI analysis failed");
+        return;
       }
-      if (!data) return;
-
-      let applied = 0;
-      if (sections.includes("general")) {
-        if (data.niche) { updateField("niche", data.niche as string); applied++; }
-        if (data.description) { updateField("description", data.description as string); applied++; }
-        if (data.targetAudience) { updateField("targetAudience", data.targetAudience as string); applied++; }
+      const data = await res.json() as AIPreview;
+      setAiPreview(data);
+      const defaults: Record<string, boolean> = {};
+      for (const f of AI_FIELDS) {
+        const val = data[f.key];
+        defaults[f.key] = Array.isArray(val) ? val.length > 0 : !!val;
       }
-      if (sections.includes("brand")) {
-        if (data.brandName) { updateField("brandName", data.brandName as string); applied++; }
-        if (data.brandUrl) { updateField("brandUrl", data.brandUrl as string); applied++; }
-        if (data.tone) { updateField("tone", data.tone as string); applied++; }
-        if (data.primaryColor) { updateField("primaryColor", data.primaryColor as string); applied++; }
-        if (data.uniqueValueProp) { updateField("uniqueValueProp", data.uniqueValueProp as string); applied++; }
-        if (data.targetLocation) { updateField("targetLocation", data.targetLocation as string); applied++; }
-        if (Array.isArray(data.competitors) && data.competitors.length) {
-          updateField("competitors", data.competitors as string[]);
-          applied++;
-        }
-        if (Array.isArray(data.keyProducts) && data.keyProducts.length) {
-          updateField("keyProducts", data.keyProducts as string[]);
-          applied++;
-        }
-      }
-      if (sections.includes("content")) {
-        if (data.suggestedCtaText) {
-          setBlogSettings((p) => ({ ...p, ctaText: data.suggestedCtaText as string }));
-          applied++;
-        }
-        if (data.suggestedCtaUrl) {
-          setBlogSettings((p) => ({ ...p, ctaUrl: data.suggestedCtaUrl as string }));
-          applied++;
-        }
-        if (data.suggestedWritingStyle) {
-          const style = data.suggestedWritingStyle as string;
-          if (["informative", "conversational", "technical", "storytelling", "persuasive", "humorous"].includes(style)) {
-            setBlogSettings((p) => ({ ...p, writingStyle: style }));
-            applied++;
-          }
-        }
-      }
-
-      toast.success(`AI filled ${applied} field${applied !== 1 ? "s" : ""} — review and save`);
+      setAiToggles(defaults);
+      setAiDialogOpen(true);
     } catch {
       toast.error("AI analysis failed");
     } finally {
       setIsAnalyzing(false);
     }
   };
+
+  const handleAIApply = () => {
+    if (!aiPreview) return;
+    let applied = 0;
+
+    if (aiToggles.niche && aiPreview.niche) { updateField("niche", aiPreview.niche); applied++; }
+    if (aiToggles.description && aiPreview.description) { updateField("description", aiPreview.description); applied++; }
+    if (aiToggles.targetAudience && aiPreview.targetAudience) { updateField("targetAudience", aiPreview.targetAudience); applied++; }
+    if (aiToggles.brandName && aiPreview.brandName) { updateField("brandName", aiPreview.brandName); applied++; }
+    if (aiToggles.brandUrl && aiPreview.brandUrl) { updateField("brandUrl", aiPreview.brandUrl); applied++; }
+    if (aiToggles.tone && aiPreview.tone) { updateField("tone", aiPreview.tone); applied++; }
+    if (aiToggles.primaryColor && aiPreview.primaryColor) { updateField("primaryColor", aiPreview.primaryColor); applied++; }
+    if (aiToggles.uniqueValueProp && aiPreview.uniqueValueProp) { updateField("uniqueValueProp", aiPreview.uniqueValueProp); applied++; }
+    if (aiToggles.targetLocation && aiPreview.targetLocation) { updateField("targetLocation", aiPreview.targetLocation); applied++; }
+    if (aiToggles.competitors && aiPreview.competitors?.length) { updateField("competitors", aiPreview.competitors); applied++; }
+    if (aiToggles.keyProducts && aiPreview.keyProducts?.length) { updateField("keyProducts", aiPreview.keyProducts); applied++; }
+    if (aiToggles.suggestedCtaText && aiPreview.suggestedCtaText) {
+      setBlogSettings((p) => ({ ...p, ctaText: aiPreview.suggestedCtaText })); applied++;
+    }
+    if (aiToggles.suggestedCtaUrl && aiPreview.suggestedCtaUrl) {
+      setBlogSettings((p) => ({ ...p, ctaUrl: aiPreview.suggestedCtaUrl })); applied++;
+    }
+    if (aiToggles.suggestedWritingStyle && aiPreview.suggestedWritingStyle) {
+      const style = aiPreview.suggestedWritingStyle;
+      if (["informative", "conversational", "technical", "storytelling", "persuasive", "humorous"].includes(style)) {
+        setBlogSettings((p) => ({ ...p, writingStyle: style })); applied++;
+      }
+    }
+
+    setAiDialogOpen(false);
+    toast.success(`Applied ${applied} field${applied !== 1 ? "s" : ""} — review and save`);
+  };
+
+  const handlePause = useCallback(async () => {
+    if (!website) return;
+    const isPaused = website.status === "PAUSED";
+    setIsPausing(true);
+    try {
+      const res = await fetch(`/api/websites/${websiteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: isPaused ? "ACTIVE" : "PAUSED" }),
+      });
+      if (res.ok) {
+        toast.success(isPaused ? "Website resumed" : "Website paused — content generation stopped");
+        fetchWebsite();
+      } else toast.error("Failed to update status");
+    } catch { toast.error("Something went wrong"); }
+    finally { setIsPausing(false); }
+  }, [website, websiteId]);
+
+  const handleDelete = useCallback(async () => {
+    if (confirmDelete !== website?.domain) {
+      toast.error("Type the domain name to confirm deletion");
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/websites/${websiteId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "DELETED" }),
+      });
+      if (res.ok) {
+        toast.success("Website deleted");
+        router.push("/dashboard/websites");
+      } else toast.error("Failed to delete website");
+    } catch { toast.error("Something went wrong"); }
+    finally { setIsDeleting(false); }
+  }, [confirmDelete, website?.domain, websiteId, router]);
 
   const nextPublish = useMemo(() => {
     if (!website?.autoPublish) return null;
@@ -419,574 +492,395 @@ export default function WebsiteSettingsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Website Settings</h2>
+          <h2 className="text-2xl font-bold">Settings</h2>
           <p className="text-muted-foreground">
-            Configure {website.name}
+            {website.name}
           </p>
         </div>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          Save All Settings
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleAIResearch}
+            disabled={isAnalyzing}
+            className="border-violet-300 text-violet-700 hover:bg-violet-50"
+          >
+            {isAnalyzing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+            {isAnalyzing ? "Researching..." : "AI Auto-Fill"}
+          </Button>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+            Save
+          </Button>
+        </div>
       </div>
 
-      <Tabs defaultValue={defaultTab}>
-        <TabsList className="flex-wrap h-auto">
-          <TabsTrigger value="general">
-            <Globe className="mr-2 h-4 w-4" />
+      {website.status === "PAUSED" && (
+        <div className="rounded-lg border border-yellow-300 bg-yellow-50 p-3 flex items-center justify-between">
+          <p className="text-sm text-yellow-800 font-medium">Website is paused — content generation is stopped.</p>
+          <Button variant="outline" size="sm" onClick={handlePause} disabled={isPausing}>
+            {isPausing && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />}
+            Resume
+          </Button>
+        </div>
+      )}
+
+      {/* ── GENERAL ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Globe className="h-4 w-4 text-primary" />
             General
-          </TabsTrigger>
-          <TabsTrigger value="brand">
-            <Palette className="mr-2 h-4 w-4" />
-            Brand
-          </TabsTrigger>
-          <TabsTrigger value="content">
-            <Bot className="mr-2 h-4 w-4" />
-            Content
-          </TabsTrigger>
-          <TabsTrigger value="wordpress">
-            <Plug className="mr-2 h-4 w-4" />
-            WordPress
-          </TabsTrigger>
-          <TabsTrigger value="ghost">
-            <Zap className="mr-2 h-4 w-4" />
-            Other CMS
-          </TabsTrigger>
-          <TabsTrigger value="shopify">
-            <ShoppingBag className="mr-2 h-4 w-4" />
-            Shopify
-          </TabsTrigger>
-          <TabsTrigger value="publishing">
-            <Share2 className="mr-2 h-4 w-4" />
-            Social
-          </TabsTrigger>
-          <TabsTrigger value="advanced">
-            <Code className="mr-2 h-4 w-4" />
-            Advanced
-          </TabsTrigger>
-        </TabsList>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Website Name</Label>
+              <Input
+                value={website.name}
+                onChange={(e) => updateField("name", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Domain</Label>
+              <Input
+                value={website.domain}
+                onChange={(e) => updateField("domain", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Niche / Industry</Label>
+              <Input
+                value={website.niche}
+                onChange={(e) => updateField("niche", e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Target Audience</Label>
+              <Input
+                value={website.targetAudience}
+                onChange={(e) => updateField("targetAudience", e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Description</Label>
+            <Textarea
+              value={website.description}
+              onChange={(e) => updateField("description", e.target.value)}
+              rows={2}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="general" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle>General Settings</CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAIAutoFill(["general"])}
-                  disabled={isAnalyzing}
-                  className="border-violet-300 text-violet-700 hover:bg-violet-50"
-                >
-                  {isAnalyzing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                  AI Auto-Fill
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Website Name</Label>
-                  <Input
-                    value={website.name}
-                    onChange={(e) => updateField("name", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Domain</Label>
-                  <Input
-                    value={website.domain}
-                    onChange={(e) => updateField("domain", e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Niche / Industry</Label>
+      {/* ── BRAND ───────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="h-4 w-4 text-primary" />
+            Brand &amp; Identity
+          </CardTitle>
+          <CardDescription>
+            AI uses this to match your voice, differentiate content, and write targeted CTAs
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Brand Name</Label>
+              <Input value={website.brandName} onChange={(e) => updateField("brandName", e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Brand URL</Label>
+              <Input value={website.brandUrl} onChange={(e) => updateField("brandUrl", e.target.value)} />
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Writing Tone</Label>
+              <Input value={website.tone} onChange={(e) => updateField("tone", e.target.value)} placeholder="e.g., Friendly, authoritative, witty" />
+            </div>
+            <div className="space-y-2">
+              <Label>Brand Color</Label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={website.primaryColor || "#4F46E5"}
+                  onChange={(e) => updateField("primaryColor", e.target.value)}
+                  className="h-10 w-10 rounded border cursor-pointer"
+                />
                 <Input
-                  value={website.niche}
-                  onChange={(e) => updateField("niche", e.target.value)}
+                  value={website.primaryColor || "#4F46E5"}
+                  onChange={(e) => updateField("primaryColor", e.target.value)}
+                  className="w-32"
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={website.description}
-                  onChange={(e) => updateField("description", e.target.value)}
-                  rows={3}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Target Audience</Label>
-                <Textarea
-                  value={website.targetAudience}
-                  onChange={(e) => updateField("targetAudience", e.target.value)}
-                  rows={2}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+            </div>
+          </div>
 
-        <TabsContent value="brand" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle>Brand Identity</CardTitle>
-                  <CardDescription>
-                    Used by AI to match your brand voice
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAIAutoFill(["brand"])}
-                  disabled={isAnalyzing}
-                  className="border-violet-300 text-violet-700 hover:bg-violet-50 shrink-0"
-                >
-                  {isAnalyzing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                  AI Auto-Fill
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Brand Name</Label>
-                  <Input
-                    value={website.brandName}
-                    onChange={(e) => updateField("brandName", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Brand URL</Label>
-                  <Input
-                    value={website.brandUrl}
-                    onChange={(e) => updateField("brandUrl", e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Writing Tone</Label>
-                <Input
-                  value={website.tone}
-                  onChange={(e) => updateField("tone", e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Brand Color</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="color"
-                    value={website.primaryColor || "#4F46E5"}
-                    onChange={(e) => updateField("primaryColor", e.target.value)}
-                    className="h-10 w-10 rounded border cursor-pointer"
-                  />
-                  <Input
-                    value={website.primaryColor || "#4F46E5"}
-                    onChange={(e) => updateField("primaryColor", e.target.value)}
-                    className="w-32"
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <Separator />
 
-          {/* Brand Intelligence */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Brain className="h-4 w-4 text-primary" />
-                Brand Intelligence
-              </CardTitle>
-              <CardDescription>
-                Richer context = dramatically better AI content. The more you fill in, the more targeted and differentiated your articles become.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="space-y-2">
-                <Label>Unique Value Proposition</Label>
-                <Textarea
-                  placeholder="e.g., The only SEO platform that generates, publishes, and internally links blog posts automatically — no manual work needed."
-                  value={website.uniqueValueProp || ""}
-                  onChange={(e) => updateField("uniqueValueProp", e.target.value)}
-                  rows={2}
-                />
-                <p className="text-xs text-muted-foreground">
-                  What makes your business different? AI uses this to write differentiating CTAs and unique angles.
-                </p>
-              </div>
+          <div className="space-y-2">
+            <Label>Unique Value Proposition</Label>
+            <Textarea
+              placeholder="What makes your business different from competitors?"
+              value={website.uniqueValueProp || ""}
+              onChange={(e) => updateField("uniqueValueProp", e.target.value)}
+              rows={2}
+            />
+            <p className="text-xs text-muted-foreground">
+              AI uses this to write differentiating CTAs and unique angles in every article.
+            </p>
+          </div>
 
-              <div className="space-y-2">
-                <Label>Geographic Focus</Label>
-                <Input
-                  placeholder="e.g., United States, Global, UK and Europe, Southeast Asia"
-                  value={website.targetLocation || ""}
-                  onChange={(e) => updateField("targetLocation", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  AI uses this to select relevant pricing data, examples, and market references.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Key Products / Features</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., Keyword Planner, Auto-Publish, WordPress Integration"
-                    value={keyProductInput}
-                    onChange={(e) => setKeyProductInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === ",") {
-                        e.preventDefault();
-                        const val = keyProductInput.trim().replace(/,$/, "");
-                        if (val && !(website.keyProducts || []).includes(val)) {
-                          updateField("keyProducts", [...(website.keyProducts || []), val]);
-                        }
-                        setKeyProductInput("");
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const val = keyProductInput.trim();
-                      if (val && !(website.keyProducts || []).includes(val)) {
-                        updateField("keyProducts", [...(website.keyProducts || []), val]);
-                      }
-                      setKeyProductInput("");
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {(website.keyProducts || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {(website.keyProducts || []).map((p) => (
-                      <span key={p} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
-                        {p}
-                        <button type="button" onClick={() => updateField("keyProducts", (website.keyProducts || []).filter((x) => x !== p))}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Product/feature names the AI will naturally mention in relevant articles. Press Enter or comma to add.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Top Competitors</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., Ahrefs, SEMrush, Surfer SEO"
-                    value={competitorInput}
-                    onChange={(e) => setCompetitorInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === ",") {
-                        e.preventDefault();
-                        const val = competitorInput.trim().replace(/,$/, "");
-                        if (val && !(website.competitors || []).includes(val)) {
-                          updateField("competitors", [...(website.competitors || []), val]);
-                        }
-                        setCompetitorInput("");
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const val = competitorInput.trim();
-                      if (val && !(website.competitors || []).includes(val)) {
-                        updateField("competitors", [...(website.competitors || []), val]);
-                      }
-                      setCompetitorInput("");
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {(website.competitors || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {(website.competitors || []).map((c) => (
-                      <span key={c} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-xs font-medium">
-                        {c}
-                        <button type="button" onClick={() => updateField("competitors", (website.competitors || []).filter((x) => x !== c))}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  AI uses competitor names to write comparison content and differentiate your positioning. Press Enter or comma to add.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="content" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Content Settings</CardTitle>
-              <CardDescription>
-                Configure AI content generation preferences
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Auto-Publish</Label>
-                  <p className="text-sm text-muted-foreground">
-                    Automatically publish posts after generation
-                  </p>
-                </div>
-                <Switch
-                  checked={website.autoPublish}
-                  onCheckedChange={(v) => updateField("autoPublish", v)}
-                />
-              </div>
-
-              <Separator />
-
-              <div className="space-y-2">
-                <Label>Hosting Mode</Label>
-                <Select
-                  value={website.hostingMode}
-                  onValueChange={(v) => updateField("hostingMode", v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {isAdmin && (
-                      <SelectItem value="HOSTED">Self-Hosted (Published on this platform)</SelectItem>
-                    )}
-                    <SelectItem value="WORDPRESS">WordPress (Plugin or App Password)</SelectItem>
-                    <SelectItem value="WEBHOOK">Webhook (Push to your CMS)</SelectItem>
-                    <SelectItem value="API">API (You fetch via REST API)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Content AI Settings */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    <Megaphone className="h-4 w-4 text-primary" />
-                    Content AI Preferences
-                  </CardTitle>
-                  <CardDescription>
-                    Control what the AI emphasizes, promotes, and avoids in every article
-                  </CardDescription>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleAIAutoFill(["content"])}
-                  disabled={isAnalyzing}
-                  className="border-violet-300 text-violet-700 hover:bg-violet-50 shrink-0"
-                >
-                  {isAnalyzing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
-                  AI Auto-Fill
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Call-to-Action Text</Label>
-                  <Input
-                    placeholder="e.g., Start your free trial"
-                    value={blogSettings.ctaText || ""}
-                    onChange={(e) => setBlogSettings((p) => ({ ...p, ctaText: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Call-to-Action URL</Label>
-                  <Input
-                    placeholder="e.g., https://app.stackserp.com/signup"
-                    value={blogSettings.ctaUrl || ""}
-                    onChange={(e) => setBlogSettings((p) => ({ ...p, ctaUrl: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground -mt-2">
-                AI will naturally embed this CTA near the end of each article.
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Geographic Focus</Label>
+              <Input
+                placeholder="e.g., United States, Global, Pakistan"
+                value={website.targetLocation || ""}
+                onChange={(e) => updateField("targetLocation", e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Used for pricing, examples, and market references.
               </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Hosting Mode</Label>
+              <Select value={website.hostingMode} onValueChange={(v) => updateField("hostingMode", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {isAdmin && <SelectItem value="HOSTED">Self-Hosted</SelectItem>}
+                  <SelectItem value="WORDPRESS">WordPress</SelectItem>
+                  <SelectItem value="WEBHOOK">Webhook</SelectItem>
+                  <SelectItem value="API">API</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
 
-              <div className="space-y-2">
-                <Label>Topics to Avoid</Label>
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="e.g., competitor names, sensitive topics"
-                    value={avoidTopicInput}
-                    onChange={(e) => setAvoidTopicInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === ",") {
-                        e.preventDefault();
-                        const val = avoidTopicInput.trim().replace(/,$/, "");
-                        if (val && !(blogSettings.avoidTopics || []).includes(val)) {
-                          setBlogSettings((p) => ({ ...p, avoidTopics: [...(p.avoidTopics || []), val] }));
-                        }
-                        setAvoidTopicInput("");
-                      }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      const val = avoidTopicInput.trim();
-                      if (val && !(blogSettings.avoidTopics || []).includes(val)) {
-                        setBlogSettings((p) => ({ ...p, avoidTopics: [...(p.avoidTopics || []), val] }));
-                      }
-                      setAvoidTopicInput("");
-                    }}
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-                {(blogSettings.avoidTopics || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {(blogSettings.avoidTopics || []).map((t) => (
-                      <span key={t} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-medium">
-                        {t}
-                        <button type="button" onClick={() => setBlogSettings((p) => ({ ...p, avoidTopics: (p.avoidTopics || []).filter((x) => x !== t) }))}>
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground">
-                  AI will never mention these in any generated content. Press Enter or comma to add.
-                </p>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Writing Style</Label>
-                  <Select
-                    value={blogSettings.writingStyle}
-                    onValueChange={(v) => setBlogSettings((p) => ({ ...p, writingStyle: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="informative">Informative</SelectItem>
-                      <SelectItem value="conversational">Conversational</SelectItem>
-                      <SelectItem value="technical">Technical</SelectItem>
-                      <SelectItem value="storytelling">Storytelling</SelectItem>
-                      <SelectItem value="persuasive">Persuasive</SelectItem>
-                      <SelectItem value="humorous">Humorous</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Default Article Length</Label>
-                  <Select
-                    value={blogSettings.contentLength}
-                    onValueChange={(v) => setBlogSettings((p) => ({ ...p, contentLength: v }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="SHORT">Short (~800 words)</SelectItem>
-                      <SelectItem value="MEDIUM">Medium (~1,500 words)</SelectItem>
-                      <SelectItem value="LONG">Long (~2,500 words)</SelectItem>
-                      <SelectItem value="PILLAR">Pillar (~4,000 words)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Include FAQ Section</Label>
-                  <p className="text-xs text-muted-foreground">Add an FAQ block at the end of each article</p>
-                </div>
-                <Switch
-                  checked={blogSettings.includeFAQ}
-                  onCheckedChange={(v) => setBlogSettings((p) => ({ ...p, includeFAQ: v }))}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div>
-                  <Label>Include Table of Contents</Label>
-                  <p className="text-xs text-muted-foreground">Auto-generate a TOC for long articles</p>
-                </div>
-                <Switch
-                  checked={blogSettings.includeTableOfContents}
-                  onCheckedChange={(v) => setBlogSettings((p) => ({ ...p, includeTableOfContents: v }))}
-                />
-              </div>
-
-              <Button onClick={handleSaveBlogSettings} disabled={isSavingBlogSettings} size="sm">
-                {isSavingBlogSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-                Save Content Settings
+          <div className="space-y-2">
+            <Label>Key Products / Features</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Type and press Enter to add"
+                value={keyProductInput}
+                onChange={(e) => setKeyProductInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    const val = keyProductInput.trim().replace(/,$/, "");
+                    if (val && !(website.keyProducts || []).includes(val)) {
+                      updateField("keyProducts", [...(website.keyProducts || []), val]);
+                    }
+                    setKeyProductInput("");
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                const val = keyProductInput.trim();
+                if (val && !(website.keyProducts || []).includes(val)) {
+                  updateField("keyProducts", [...(website.keyProducts || []), val]);
+                }
+                setKeyProductInput("");
+              }}>
+                <Plus className="h-4 w-4" />
               </Button>
-            </CardContent>
-          </Card>
+            </div>
+            {(website.keyProducts || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(website.keyProducts || []).map((p) => (
+                  <span key={p} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+                    {p}
+                    <button type="button" onClick={() => updateField("keyProducts", (website.keyProducts || []).filter((x) => x !== p))}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label>Top Competitors</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Type and press Enter to add"
+                value={competitorInput}
+                onChange={(e) => setCompetitorInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    const val = competitorInput.trim().replace(/,$/, "");
+                    if (val && !(website.competitors || []).includes(val)) {
+                      updateField("competitors", [...(website.competitors || []), val]);
+                    }
+                    setCompetitorInput("");
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                const val = competitorInput.trim();
+                if (val && !(website.competitors || []).includes(val)) {
+                  updateField("competitors", [...(website.competitors || []), val]);
+                }
+                setCompetitorInput("");
+              }}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {(website.competitors || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(website.competitors || []).map((c) => (
+                  <span key={c} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-orange-50 text-orange-700 border border-orange-200 text-xs font-medium">
+                    {c}
+                    <button type="button" onClick={() => updateField("competitors", (website.competitors || []).filter((x) => x !== c))}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── CONTENT AI ──────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-4 w-4 text-primary" />
+            Content &amp; AI
+          </CardTitle>
+          <CardDescription>
+            Control what the AI writes, how it writes, and when it publishes
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Writing Style</Label>
+              <Select value={blogSettings.writingStyle} onValueChange={(v) => setBlogSettings((p) => ({ ...p, writingStyle: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="informative">Informative</SelectItem>
+                  <SelectItem value="conversational">Conversational</SelectItem>
+                  <SelectItem value="technical">Technical</SelectItem>
+                  <SelectItem value="storytelling">Storytelling</SelectItem>
+                  <SelectItem value="persuasive">Persuasive</SelectItem>
+                  <SelectItem value="humorous">Humorous</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Default Article Length</Label>
+              <Select value={blogSettings.contentLength} onValueChange={(v) => setBlogSettings((p) => ({ ...p, contentLength: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="SHORT">Short (~800 words)</SelectItem>
+                  <SelectItem value="MEDIUM">Medium (~1,500 words)</SelectItem>
+                  <SelectItem value="LONG">Long (~2,500 words)</SelectItem>
+                  <SelectItem value="PILLAR">Pillar (~4,000 words)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Call-to-Action Text</Label>
+              <Input
+                placeholder="e.g., Start your free trial"
+                value={blogSettings.ctaText || ""}
+                onChange={(e) => setBlogSettings((p) => ({ ...p, ctaText: e.target.value }))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Call-to-Action URL</Label>
+              <Input
+                placeholder="e.g., https://yoursite.com/signup"
+                value={blogSettings.ctaUrl || ""}
+                onChange={(e) => setBlogSettings((p) => ({ ...p, ctaUrl: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label>Topics to Avoid</Label>
+            <div className="flex gap-2">
+              <Input
+                placeholder="Type and press Enter to add"
+                value={avoidTopicInput}
+                onChange={(e) => setAvoidTopicInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    const val = avoidTopicInput.trim().replace(/,$/, "");
+                    if (val && !(blogSettings.avoidTopics || []).includes(val)) {
+                      setBlogSettings((p) => ({ ...p, avoidTopics: [...(p.avoidTopics || []), val] }));
+                    }
+                    setAvoidTopicInput("");
+                  }
+                }}
+              />
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                const val = avoidTopicInput.trim();
+                if (val && !(blogSettings.avoidTopics || []).includes(val)) {
+                  setBlogSettings((p) => ({ ...p, avoidTopics: [...(p.avoidTopics || []), val] }));
+                }
+                setAvoidTopicInput("");
+              }}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+            {(blogSettings.avoidTopics || []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {(blogSettings.avoidTopics || []).map((t) => (
+                  <span key={t} className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 text-red-700 border border-red-200 text-xs font-medium">
+                    {t}
+                    <button type="button" onClick={() => setBlogSettings((p) => ({ ...p, avoidTopics: (p.avoidTopics || []).filter((x) => x !== t) }))}>
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-x-8 gap-y-3 md:grid-cols-3">
+            <div className="flex items-center justify-between">
+              <Label>Auto-Publish</Label>
+              <Switch checked={website.autoPublish} onCheckedChange={(v) => updateField("autoPublish", v)} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>FAQ Section</Label>
+              <Switch checked={blogSettings.includeFAQ} onCheckedChange={(v) => setBlogSettings((p) => ({ ...p, includeFAQ: v }))} />
+            </div>
+            <div className="flex items-center justify-between">
+              <Label>Table of Contents</Label>
+              <Switch checked={blogSettings.includeTableOfContents} onCheckedChange={(v) => setBlogSettings((p) => ({ ...p, includeTableOfContents: v }))} />
+            </div>
+          </div>
 
           {website.autoPublish && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <CalendarDays className="h-4 w-4" />
-                  Schedule
-                </CardTitle>
-                <CardDescription>
-                  Set when and how often posts are published
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-2">
-                  <Label>Timezone</Label>
-                  <Select
-                    value={website.timezone || "UTC"}
-                    onValueChange={(v) => updateField("timezone", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-60">
-                      {COMMON_TIMEZONES.map((tz) => (
-                        <SelectItem key={tz} value={tz}>
-                          {getTimezoneLabel(tz)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
+            <>
+              <Separator />
+              <div className="space-y-4">
+                <p className="text-sm font-medium flex items-center gap-2">
+                  <CalendarDays className="h-4 w-4 text-primary" />
+                  Publish Schedule
+                </p>
                 <div className="space-y-2">
                   <Label>Publish Days</Label>
                   <div className="flex flex-wrap gap-2">
                     {ALL_DAYS.map((day) => {
-                      const active = (website.publishDays || "MON,WED,FRI")
-                        .split(",")
-                        .map((d) => d.trim())
-                        .includes(day.key);
+                      const active = (website.publishDays || "MON,WED,FRI").split(",").map((d) => d.trim()).includes(day.key);
                       return (
                         <button
                           key={day.key}
@@ -1003,243 +897,286 @@ export default function WebsiteSettingsPage() {
                       );
                     })}
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    {(website.publishDays || "MON,WED,FRI").split(",").length} day{(website.publishDays || "MON,WED,FRI").split(",").length !== 1 ? "s" : ""} selected
-                  </p>
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-4 md:grid-cols-3">
                   <div className="space-y-2">
-                    <Label className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5" />
-                      Publish Time
-                    </Label>
-                    <Input
-                      type="time"
-                      value={website.publishTime || "09:00"}
-                      onChange={(e) => updateField("publishTime", e.target.value)}
-                      className="w-32"
-                    />
+                    <Label className="flex items-center gap-1.5"><Clock className="h-3.5 w-3.5" /> Time</Label>
+                    <Input type="time" value={website.publishTime || "09:00"} onChange={(e) => updateField("publishTime", e.target.value)} className="w-32" />
                   </div>
                   <div className="space-y-2">
-                    <Label>Posts Per Week</Label>
-                    <Select
-                      value={String(website.postsPerWeek)}
-                      onValueChange={(v) => updateField("postsPerWeek", parseInt(v))}
-                    >
-                      <SelectTrigger className="w-32">
-                        <SelectValue />
-                      </SelectTrigger>
+                    <Label>Posts/Week</Label>
+                    <Select value={String(website.postsPerWeek)} onValueChange={(v) => updateField("postsPerWeek", parseInt(v))}>
+                      <SelectTrigger className="w-32"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         {[1, 2, 3, 5, 7, 10, 14].map((n) => (
-                          <SelectItem key={n} value={String(n)}>
-                            {n} post{n !== 1 ? "s" : ""}/week
-                          </SelectItem>
+                          <SelectItem key={n} value={String(n)}>{n}/week</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Timezone</Label>
+                    <Select value={website.timezone || "UTC"} onValueChange={(v) => updateField("timezone", v)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {COMMON_TIMEZONES.map((tz) => (
+                          <SelectItem key={tz} value={tz}>{getTimezoneLabel(tz)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
-
-                <Separator />
-
-                <div className="rounded-lg border bg-muted/30 p-4">
-                  <div className="flex items-center gap-2 text-sm font-medium mb-1">
-                    <Clock className="h-4 w-4 text-primary" />
-                    Next Scheduled Post
+                {nextPublish && (
+                  <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                    <span className="font-medium">Next post:</span>{" "}
+                    {nextPublish.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: website.timezone || "UTC" })}
+                    {" at "}
+                    {nextPublish.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", timeZone: website.timezone || "UTC" })}
                   </div>
-                  {nextPublish ? (
-                    <div className="space-y-1">
-                      <p className="text-sm">
-                        {nextPublish.toLocaleDateString("en-US", {
-                          weekday: "long",
-                          year: "numeric",
-                          month: "long",
-                          day: "numeric",
-                          timeZone: website.timezone || "UTC",
-                        })}
-                        {" at "}
-                        {nextPublish.toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          timeZone: website.timezone || "UTC",
-                          timeZoneName: "short",
-                        })}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {(() => {
-                          const diff = nextPublish.getTime() - Date.now();
-                          const hours = Math.floor(diff / 3600000);
-                          const mins = Math.floor((diff % 3600000) / 60000);
-                          if (hours > 24) {
-                            const days = Math.floor(hours / 24);
-                            return `in ${days} day${days !== 1 ? "s" : ""}, ${hours % 24}h`;
-                          }
-                          return `in ${hours}h ${mins}m`;
-                        })()}
-                      </p>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      No upcoming publish — check your day/time settings
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                )}
+              </div>
+            </>
           )}
-        </TabsContent>
+        </CardContent>
+      </Card>
 
-        <TabsContent value="wordpress" className="space-y-4 mt-4">
-          <WordPressSettings websiteId={websiteId} />
-        </TabsContent>
+      {/* ── INTEGRATIONS (tabs for optional stuff) ──────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Plug className="h-4 w-4 text-primary" />
+            Integrations
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Tabs defaultValue={defaultTab === "wordpress" || defaultTab === "ghost" || defaultTab === "shopify" || defaultTab === "publishing" ? defaultTab : "wordpress"}>
+            <TabsList className="flex-wrap h-auto mb-4">
+              <TabsTrigger value="wordpress"><Plug className="mr-1.5 h-3.5 w-3.5" /> WordPress</TabsTrigger>
+              <TabsTrigger value="ghost"><Zap className="mr-1.5 h-3.5 w-3.5" /> Ghost / Webhook</TabsTrigger>
+              <TabsTrigger value="shopify"><ShoppingBag className="mr-1.5 h-3.5 w-3.5" /> Shopify</TabsTrigger>
+              <TabsTrigger value="publishing"><Share2 className="mr-1.5 h-3.5 w-3.5" /> Social</TabsTrigger>
+            </TabsList>
 
-        <TabsContent value="ghost" className="space-y-4 mt-4">
-          <GhostSettings websiteId={websiteId} />
-          <WebhookSettings websiteId={websiteId} />
-        </TabsContent>
+            <TabsContent value="wordpress">
+              <WordPressSettings websiteId={websiteId} />
+            </TabsContent>
 
-        <TabsContent value="shopify" className="space-y-4 mt-4">
-          <ShopifySettings websiteId={websiteId} />
-        </TabsContent>
+            <TabsContent value="ghost" className="space-y-4">
+              <GhostSettings websiteId={websiteId} />
+              <WebhookSettings websiteId={websiteId} />
+            </TabsContent>
 
-        <TabsContent value="publishing" className="space-y-4 mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Twitter className="h-4 w-4" />
-                Twitter / X
-              </CardTitle>
-              <CardDescription>
-                Auto-post a thread when a new article is published
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>API Key</Label>
-                <Input
-                  type="password"
-                  placeholder="Twitter API Key"
-                  value={website.twitterApiKey || ""}
-                  onChange={(e) => updateField("twitterApiKey", e.target.value)}
-                />
-              </div>
-              <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
-                Requires a Twitter Developer account with Read & Write permissions.{" "}
-                <a href="https://developer.twitter.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  Get API keys →
-                </a>
-              </div>
-            </CardContent>
-          </Card>
+            <TabsContent value="shopify">
+              <ShopifySettings websiteId={websiteId} />
+            </TabsContent>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Linkedin className="h-4 w-4" />
-                LinkedIn
-              </CardTitle>
-              <CardDescription>
-                Share posts to your LinkedIn company page automatically
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>LinkedIn Access Token</Label>
-                <Input
-                  type="password"
-                  placeholder="LinkedIn OAuth access token"
-                  value={website.linkedinAccessToken || ""}
-                  onChange={(e) => updateField("linkedinAccessToken", e.target.value)}
-                />
-              </div>
-              <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground">
-                Requires a LinkedIn app with <code className="bg-muted px-1 rounded">w_member_social</code> scope.{" "}
-                <a href="https://www.linkedin.com/developers/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                  LinkedIn Developers →
-                </a>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="advanced" className="mt-4 space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Analytics &amp; Search</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>Google Analytics Measurement ID</Label>
-                <Input
-                  placeholder="G-XXXXXXXXXX"
-                  value={website.googleAnalyticsId || ""}
-                  onChange={(e) => updateField("googleAnalyticsId", e.target.value)}
-                />
-              </div>
-              <Separator />
-              <div className="space-y-2">
-                <Label>Google Search Console Property URL</Label>
-                <Input
-                  placeholder="https://yourdomain.com"
-                  value={website.gscPropertyUrl || ""}
-                  onChange={(e) => updateField("gscPropertyUrl", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Your site property URL as registered in Google Search Console
-                </p>
-              </div>
-              <Separator />
-              <div className="space-y-2">
-                <Label className="flex items-center gap-2">
-                  <Zap className="h-3.5 w-3.5 text-primary" />
-                  IndexNow API Key
-                </Label>
-                <Input
-                  placeholder="e.g. a1b2c3d4e5f6..."
-                  value={website.indexNowKey || ""}
-                  onChange={(e) => updateField("indexNowKey", e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Submit published posts to Google &amp; Bing instantly.{" "}
-                  <a href="https://www.indexnow.org/faq" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                    Learn more →
-                  </a>
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="border-destructive/50">
-            <CardHeader>
-              <CardTitle className="text-destructive flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5" />
-                Danger Zone
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
+            <TabsContent value="publishing" className="space-y-4">
+              <div className="space-y-4">
                 <div>
-                  <p className="font-medium">Pause Website</p>
-                  <p className="text-sm text-muted-foreground">
-                    Stop all content generation for this website
+                  <p className="text-sm font-medium flex items-center gap-2 mb-3"><Twitter className="h-4 w-4" /> Twitter / X</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <Input type="password" placeholder="API Key (Consumer Key)" value={website.twitterApiKey || ""} onChange={(e) => updateField("twitterApiKey", e.target.value)} />
+                    <Input type="password" placeholder="API Secret (Consumer Secret)" value={website.twitterApiSecret || ""} onChange={(e) => updateField("twitterApiSecret", e.target.value)} />
+                    <Input type="password" placeholder="Access Token" value={website.twitterAccessToken || ""} onChange={(e) => updateField("twitterAccessToken", e.target.value)} />
+                    <Input type="password" placeholder="Access Token Secret" value={website.twitterAccessSecret || ""} onChange={(e) => updateField("twitterAccessSecret", e.target.value)} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">
+                    All 4 keys needed.{" "}
+                    <a href="https://developer.twitter.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Get API keys →</a>
                   </p>
                 </div>
-                <Button variant="outline">Pause</Button>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
+                <Separator />
                 <div>
-                  <p className="font-medium">Delete Website</p>
-                  <p className="text-sm text-muted-foreground">
-                    Permanently delete this website and all its content
+                  <p className="text-sm font-medium flex items-center gap-2 mb-3"><Linkedin className="h-4 w-4" /> LinkedIn</p>
+                  <Input type="password" placeholder="LinkedIn OAuth access token" value={website.linkedinAccessToken || ""} onChange={(e) => updateField("linkedinAccessToken", e.target.value)} />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Requires <code className="bg-muted px-1 rounded">w_member_social</code> scope.{" "}
+                    <a href="https://www.linkedin.com/developers/" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">LinkedIn Developers →</a>
                   </p>
                 </div>
-                <Button variant="destructive">Delete</Button>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* ── ADVANCED ────────────────────────────────────── */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Code className="h-4 w-4 text-primary" />
+            Analytics &amp; SEO
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label>Google Analytics ID</Label>
+              <Input placeholder="G-XXXXXXXXXX" value={website.googleAnalyticsId || ""} onChange={(e) => updateField("googleAnalyticsId", e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label>Search Console URL</Label>
+              <Input placeholder="https://yourdomain.com" value={website.gscPropertyUrl || ""} onChange={(e) => updateField("gscPropertyUrl", e.target.value)} />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2"><Zap className="h-3.5 w-3.5 text-primary" /> IndexNow API Key</Label>
+            <Input placeholder="Auto-submit to Google & Bing on publish" value={website.indexNowKey || ""} onChange={(e) => updateField("indexNowKey", e.target.value)} />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── DANGER ZONE ─────────────────────────────────── */}
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5" />
+            Danger Zone
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Pause Website</p>
+              <p className="text-sm text-muted-foreground">Stop all content generation</p>
+            </div>
+            <Button variant="outline" onClick={handlePause} disabled={isPausing}>
+              {isPausing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {website.status === "PAUSED" ? "Resume" : "Pause"}
+            </Button>
+          </div>
+          <Separator />
+          <div className="space-y-3">
+            <p className="font-medium">Delete Website</p>
+            <p className="text-sm text-muted-foreground">Permanently delete this website and all its content</p>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                Type <span className="font-mono font-semibold text-foreground">{website.domain}</span> to confirm:
+              </p>
+              <div className="flex gap-2">
+                <Input placeholder={website.domain} value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} className="max-w-xs" />
+                <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || confirmDelete !== website.domain}>
+                  {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Delete Forever
+                </Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── AI PREVIEW DIALOG ───────────────────────────── */}
+      <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-violet-600" />
+              AI Research Results
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              We researched <span className="font-medium text-foreground">{website.domain}</span>. Toggle which fields to apply, edit any value, then hit Apply.
+            </p>
+          </DialogHeader>
+
+          {aiPreview && (
+            <div className="space-y-4 py-2">
+              {["General", "Brand", "Content"].map((group) => (
+                <div key={group}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group}</p>
+                    <button
+                      type="button"
+                      className="text-xs text-primary hover:underline"
+                      onClick={() => {
+                        const groupFields = AI_FIELDS.filter((f) => f.group === group);
+                        const allOn = groupFields.every((f) => aiToggles[f.key]);
+                        setAiToggles((prev) => {
+                          const next = { ...prev };
+                          for (const f of groupFields) next[f.key] = !allOn;
+                          return next;
+                        });
+                      }}
+                    >
+                      Toggle all
+                    </button>
+                  </div>
+                  <div className="space-y-2">
+                    {AI_FIELDS.filter((f) => f.group === group).map((field) => {
+                      const val = aiPreview[field.key];
+                      const display = Array.isArray(val) ? val.join(", ") : String(val || "");
+                      if (!display) return null;
+                      return (
+                        <div key={field.key} className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${aiToggles[field.key] ? "bg-violet-50/50 border-violet-200" : "bg-muted/30 opacity-60"}`}>
+                          <Switch
+                            checked={!!aiToggles[field.key]}
+                            onCheckedChange={(v) => setAiToggles((prev) => ({ ...prev, [field.key]: v }))}
+                            className="mt-0.5 shrink-0"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium text-muted-foreground mb-0.5">{field.label}</p>
+                            {field.key === "primaryColor" ? (
+                              <div className="flex items-center gap-2">
+                                <div className="h-5 w-5 rounded border" style={{ backgroundColor: display }} />
+                                <Input
+                                  value={display}
+                                  onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
+                                  className="h-7 text-xs max-w-[120px]"
+                                />
+                              </div>
+                            ) : Array.isArray(val) ? (
+                              <div className="flex flex-wrap gap-1">
+                                {val.map((item: string) => (
+                                  <Badge key={item} variant="secondary" className="text-xs">{item}</Badge>
+                                ))}
+                              </div>
+                            ) : field.key === "description" || field.key === "uniqueValueProp" || field.key === "targetAudience" ? (
+                              <Textarea
+                                value={display}
+                                rows={2}
+                                onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
+                                className="text-sm"
+                              />
+                            ) : field.key === "suggestedWritingStyle" ? (
+                              <Select
+                                value={display}
+                                onValueChange={(v) => setAiPreview((prev) => prev ? { ...prev, suggestedWritingStyle: v } : prev)}
+                              >
+                                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="informative">Informative</SelectItem>
+                                  <SelectItem value="conversational">Conversational</SelectItem>
+                                  <SelectItem value="technical">Technical</SelectItem>
+                                  <SelectItem value="storytelling">Storytelling</SelectItem>
+                                  <SelectItem value="persuasive">Persuasive</SelectItem>
+                                  <SelectItem value="humorous">Humorous</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            ) : (
+                              <Input
+                                value={display}
+                                onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
+                                className="h-8 text-sm"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setAiDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleAIApply} className="bg-violet-600 hover:bg-violet-700">
+              <CheckCircle2 className="mr-1.5 h-4 w-4" />
+              Apply {Object.values(aiToggles).filter(Boolean).length} Fields
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

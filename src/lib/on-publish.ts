@@ -38,6 +38,9 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
         id: true, domain: true, subdomain: true, brandName: true,
         indexNowKey: true,
         twitterApiKey: true,
+        twitterApiSecret: true,
+        twitterAccessToken: true,
+        twitterAccessSecret: true,
         linkedinAccessToken: true,
         webhookUrl: true, webhookSecret: true,
         ghostConfig: true,
@@ -72,15 +75,27 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
   if (website.indexNowKey) {
     tasks.push(
       indexPost(post.slug, website.domain, website.subdomain, website.indexNowKey)
+        .then(() => {
+          prisma.blogPost.update({
+            where: { id: postId },
+            data: { indexedAt: new Date() },
+          }).catch(() => {});
+        })
         .catch(e => console.error("[IndexNow] error:", e))
     );
   }
 
-  // 2. Twitter/X
-  if (website.twitterApiKey) {
+  // 2. Twitter/X — requires all 4 OAuth keys
+  if (website.twitterApiKey && website.twitterApiSecret && website.twitterAccessToken && website.twitterAccessSecret) {
     tasks.push((async () => {
+      const twitterConfig = JSON.stringify({
+        apiKey: website.twitterApiKey,
+        apiSecret: website.twitterApiSecret,
+        accessToken: website.twitterAccessToken,
+        accessSecret: website.twitterAccessSecret,
+      });
       const text = buildTweetText(post, postUrl);
-      const result = await postTweet(text, website.twitterApiKey!);
+      const result = await postTweet(text, twitterConfig);
       if (result.success) {
         console.log(`[Twitter] Posted: ${result.tweetUrl}`);
         await prisma.blogPost.update({
@@ -218,12 +233,19 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
   // Revalidate the public blog pages so the post appears immediately
   try {
     const appUrl = process.env.NEXTAUTH_URL || "https://stackserp.com";
-    const revalidateSecret = process.env.NEXTAUTH_SECRET || "";
-    // Only revalidate for StackSerp's own hosted blog
-    if (website.subdomain === "stackserp" || website.domain === "stackserp.com") {
+    const revalidateSecret = process.env.REVALIDATE_SECRET || "";
+    if (revalidateSecret && (website.subdomain === "stackserp" || website.domain === "stackserp.com")) {
       await Promise.allSettled([
-        fetch(`${appUrl}/api/revalidate?path=/blogs&secret=${revalidateSecret}`),
-        fetch(`${appUrl}/api/revalidate?path=/blogs/${post.slug}&secret=${revalidateSecret}`),
+        fetch(`${appUrl}/api/revalidate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${revalidateSecret}` },
+          body: JSON.stringify({ path: "/blogs" }),
+        }),
+        fetch(`${appUrl}/api/revalidate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${revalidateSecret}` },
+          body: JSON.stringify({ path: `/blogs/${post.slug}` }),
+        }),
       ]);
     }
   } catch {

@@ -17,14 +17,23 @@ export function getGemini() {
   return _genAI;
 }
 
+const DEFAULT_MODEL = "gemini-3.1-pro-preview";
+
+// Thread-local model override — set by generateBlogPost before calling AI
+let _modelOverride: string | null = null;
+export function setModelOverride(model: string | null) {
+  _modelOverride = model;
+}
+
 export async function generateText(
   prompt: string,
   systemPrompt?: string,
-  options?: { temperature?: number; maxTokens?: number }
+  options?: { temperature?: number; maxTokens?: number; model?: string }
 ): Promise<string> {
   const genAI = getGemini();
+  const modelName = options?.model || _modelOverride || DEFAULT_MODEL;
   const model = genAI.getGenerativeModel({
-    model: "gemini-3.1-pro-preview",
+    model: modelName,
     systemInstruction: systemPrompt,
     generationConfig: {
       temperature: options?.temperature ?? 0.7,

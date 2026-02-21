@@ -21,13 +21,21 @@ export async function POST(
     const access = await verifyWebsiteAccess(websiteId);
     if ("error" in access) return access.error;
 
+    // Block generation for paused/deleted websites
+    if (access.website.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "Website is paused or deleted. Resume it from settings to generate content." },
+        { status: 403 }
+      );
+    }
+
     const { keywordIds, count = 3, contentLength = "MEDIUM", autoPublish = false } = await req.json();
 
     // Validate inputs
     if (count !== undefined && (typeof count !== "number" || count < 1 || count > 10)) {
       return NextResponse.json({ error: "count must be between 1 and 10" }, { status: 400 });
     }
-    if (!["SHORT", "MEDIUM"].includes(contentLength)) {
+    if (!["SHORT", "MEDIUM", "LONG", "PILLAR"].includes(contentLength)) {
       return NextResponse.json({ error: "Invalid contentLength" }, { status: 400 });
     }
 

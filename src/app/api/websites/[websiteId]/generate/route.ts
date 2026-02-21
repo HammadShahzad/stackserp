@@ -38,12 +38,20 @@ export async function POST(
       return NextResponse.json({ error: limitCheck.reason }, { status: 403 });
     }
 
+    if (website.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "Website is paused or deleted. Resume it from settings to generate content." },
+        { status: 403 }
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const {
       keywordId,
       contentLength = "MEDIUM",
       includeImages = true,
       includeFAQ = true,
+      includeTableOfContents = true,
       autoPublish = false,
     } = body;
 
@@ -87,6 +95,7 @@ export async function POST(
       contentLength,
       includeImages,
       includeFAQ,
+      includeTableOfContents,
       autoPublish,
     });
 

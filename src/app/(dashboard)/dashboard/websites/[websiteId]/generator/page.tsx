@@ -135,6 +135,7 @@ export default function GeneratorPage() {
   const [contentLength, setContentLength] = useState("MEDIUM");
   const [includeImages, setIncludeImages] = useState(true);
   const [includeFAQ, setIncludeFAQ] = useState(true);
+  const [includeTableOfContents, setIncludeTableOfContents] = useState(true);
   const [autoPublish, setAutoPublish] = useState(false);
   const pollRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -322,6 +323,7 @@ export default function GeneratorPage() {
           contentLength,
           includeImages,
           includeFAQ,
+          includeTableOfContents,
           autoPublish,
         }),
       });
@@ -638,6 +640,8 @@ export default function GeneratorPage() {
                   <SelectContent>
                     <SelectItem value="SHORT">Short (800-1200 words)</SelectItem>
                     <SelectItem value="MEDIUM">Medium (1500-2500 words)</SelectItem>
+                    <SelectItem value="LONG">Long (2500-4000 words)</SelectItem>
+                    <SelectItem value="PILLAR">Pillar (4000-6000 words)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -656,6 +660,14 @@ export default function GeneratorPage() {
                   <p className="text-xs text-muted-foreground">4-5 Q&A pairs</p>
                 </div>
                 <Switch checked={includeFAQ} onCheckedChange={setIncludeFAQ} />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Table of Contents</Label>
+                  <p className="text-xs text-muted-foreground">Clickable TOC after intro</p>
+                </div>
+                <Switch checked={includeTableOfContents} onCheckedChange={setIncludeTableOfContents} />
               </div>
 
               <div className="flex items-center justify-between">

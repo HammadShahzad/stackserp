@@ -5,7 +5,7 @@
  * Ported from InvoiceCave's proven 680-line blog-generator.ts with
  * multi-website parameterization.
  */
-import { generateText, generateJSON } from "./gemini";
+import { generateText, generateJSON, setModelOverride } from "./gemini";
 import { researchKeyword, ResearchResult } from "./research";
 import { generateBlogImage, generateInlineImage } from "../storage/image-generator";
 import type { Website, BlogSettings } from "@prisma/client";
@@ -25,7 +25,8 @@ export interface WebsiteContext {
   ctaText?: string;
   ctaUrl?: string;
   avoidTopics?: string[];
-  writingStyle?: string; // from BlogSettings (informative/conversational/technical/etc.)
+  writingStyle?: string;
+  requiredSections?: string[];
   // Brand Intelligence
   uniqueValueProp?: string;
   competitors?: string[];
@@ -190,7 +191,7 @@ function countWords(text: string): number {
 export async function generateBlogPost(
   keyword: string,
   website: WebsiteWithSettings,
-  contentLength: "SHORT" | "MEDIUM" = "MEDIUM",
+  contentLength: "SHORT" | "MEDIUM" | "LONG" | "PILLAR" = "MEDIUM",
   options: {
     includeImages?: boolean;
     includeFAQ?: boolean;
@@ -201,6 +202,12 @@ export async function generateBlogPost(
   } = {}
 ): Promise<GeneratedPost> {
   const { includeImages = true, includeFAQ = true, includeTableOfContents = true, onProgress } = options;
+
+  // Use the preferred model from BlogSettings if configured
+  const preferredModel = website.blogSettings?.preferredModel;
+  if (preferredModel && preferredModel !== "gemini-3.1-pro-preview") {
+    setModelOverride(preferredModel);
+  }
 
   const ctx: WebsiteContext = {
     id: website.id,
@@ -216,17 +223,20 @@ export async function generateBlogPost(
     ctaUrl: website.blogSettings?.ctaUrl ?? undefined,
     avoidTopics: website.blogSettings?.avoidTopics ?? undefined,
     writingStyle: website.blogSettings?.writingStyle ?? undefined,
+    requiredSections: website.blogSettings?.requiredSections?.length ? website.blogSettings.requiredSections : undefined,
     uniqueValueProp: website.uniqueValueProp ?? undefined,
     competitors: website.competitors?.length ? website.competitors : undefined,
     keyProducts: website.keyProducts?.length ? website.keyProducts : undefined,
     targetLocation: website.targetLocation ?? undefined,
   };
 
-  const wordTargets = {
+  const wordTargets: Record<string, string> = {
     SHORT: "800-1200",
     MEDIUM: "1500-2500",
+    LONG: "2500-4000",
+    PILLAR: "4000-6000",
   };
-  const targetWords = wordTargets[contentLength];
+  const targetWords = wordTargets[contentLength] || wordTargets.MEDIUM;
 
   const progress = async (step: typeof STEPS[number], message: string) => {
     const stepIndex = STEPS.indexOf(step);
@@ -288,6 +298,7 @@ Create an outline with:
 - Cover everything top competitors cover PLUS the content gaps identified above
 ${includeFAQ ? "- A FAQ section with 4-5 of the most commonly searched questions" : ""}
 - A "Key Takeaways" section near the top
+${ctx.requiredSections?.length ? `- MUST include these specific sections: ${ctx.requiredSections.join(", ")}` : ""}
 - A strong conclusion with CTA for ${ctx.brandName}${ctx.uniqueValueProp ? ` highlighting: "${ctx.uniqueValueProp}"` : ""}
 - In the "uniqueAngle" field: write the specific contrarian/fresh angle this article should take vs. the typical treatment of this topic
 
@@ -323,12 +334,12 @@ BAD opening: "In today's competitive landscape..."
 GOOD opening: Put the reader IN a moment. Make them think "that's me."
 
 **Structure:**
-1. Open with the HOOK (story/scenario/question) — NO table of contents yet
-2. Key Takeaways / Quick Summary box (bulleted, 4-5 points)
-3. Table of Contents (linking to H2 sections — MUST match the actual H2 headings EXACTLY, character for character)
-4. Main sections following the outline
-5. ${includeFAQ ? "FAQ section (4-5 questions with detailed answers)" : ""}
-6. Conclusion with CTA for ${ctx.brandName}
+- Open with the HOOK (story/scenario/question)
+- Key Takeaways / Quick Summary box (bulleted, 4-5 points)
+${includeTableOfContents ? "- Table of Contents (linking to H2 sections — MUST match the actual H2 headings EXACTLY, character for character)" : "- Do NOT include a Table of Contents"}
+- Main sections following the outline
+${includeFAQ ? "- FAQ section (4-5 questions with detailed answers)" : ""}
+- Conclusion with CTA for ${ctx.brandName}
 
 **Content rules:**
 - Write ${targetWords} words — comprehensive, beats competitors
@@ -345,7 +356,7 @@ GOOD opening: Put the reader IN a moment. Make them think "that's me."
 
 Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the hook paragraph.`,
     systemPrompt,
-    { temperature: 0.8, maxTokens: 8192 }
+    { temperature: 0.8, maxTokens: contentLength === "PILLAR" ? 16384 : contentLength === "LONG" ? 12288 : 8192 }
   );
 
   // ─── STEP 4: CRITIQUE + TONE POLISH ─────────────────────────────
@@ -629,4 +640,7 @@ Output ONLY valid JSON (no markdown code fences) with this exact structure:
     category: metadata.category || ctx.niche,
     researchData: research,
   };
+
+  // Reset model override after generation completes
+  setModelOverride(null);
 }
