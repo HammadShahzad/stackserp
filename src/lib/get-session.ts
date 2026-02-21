@@ -60,28 +60,10 @@ export async function getCurrentOrganization() {
 }
 
 export async function getWebsite(websiteId: string) {
-  const session = await getRequiredSession();
-  const isAdmin = (session.user as { systemRole?: string }).systemRole === "ADMIN";
+  const { session, organization } = await getCurrentOrganization();
 
-  if (isAdmin) {
-    const website = await prisma.website.findFirst({
-      where: { id: websiteId, status: { not: "DELETED" } },
-    });
-    if (!website) {
-      redirect("/dashboard/websites");
-    }
-    const organization = await prisma.organization.findUnique({
-      where: { id: website.organizationId },
-      include: { subscription: true },
-    });
-    if (!organization) {
-      redirect("/dashboard/websites");
-    }
-    return { session, organization, website };
-  }
-
-  const { session: _s, organization } = await getCurrentOrganization();
-  const website = await prisma.website.findFirst({
+  // Try the user's own org first
+  let website = await prisma.website.findFirst({
     where: {
       id: websiteId,
       organizationId: organization.id,
@@ -89,9 +71,16 @@ export async function getWebsite(websiteId: string) {
     },
   });
 
+  // Admin fallback: load any website
+  if (!website && session.user.systemRole === "ADMIN") {
+    website = await prisma.website.findFirst({
+      where: { id: websiteId, status: { not: "DELETED" } },
+    });
+  }
+
   if (!website) {
     redirect("/dashboard/websites");
   }
 
-  return { session: _s, organization, website };
+  return { session, organization, website };
 }

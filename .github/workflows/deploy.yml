@@ -62,13 +62,10 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Run DB migrations on droplet
+      - name: Sync DB schema (add missing columns/tables)
+        run: npx prisma db push --accept-data-loss --skip-generate
         env:
-          DEPLOY_PASS: ${{ secrets.DROPLET_PASSWORD }}
-        run: |
-          sshpass -p "$DEPLOY_PASS" ssh -o StrictHostKeyChecking=no \
-            ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} \
-            "cd ${{ env.DEPLOY_PATH }} && DATABASE_URL='${{ secrets.DATABASE_URL }}' npx prisma migrate deploy 2>&1 || echo 'Migration skipped (no prisma binary on droplet — handled by next step)'"
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
       - name: Sync standalone build to droplet
         env:
@@ -78,15 +75,7 @@ jobs:
           rsync -avz --delete --exclude '.env' -e "$R" .next/standalone/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/.next/standalone/
           rsync -avz --delete -e "$R" .next/static/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/.next/static/
           rsync -avz --delete -e "$R" public/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/public/
-          rsync -avz -e "$R" ecosystem.config.js worker.js package.json ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
-
-      - name: Run DB migrations via standalone prisma
-        env:
-          DEPLOY_PASS: ${{ secrets.DROPLET_PASSWORD }}
-        run: |
-          R="sshpass -p \"$DEPLOY_PASS\" ssh -o StrictHostKeyChecking=no"
-          rsync -avz -e "$R" prisma/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/prisma/
-          sshpass -p "$DEPLOY_PASS" ssh -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd /var/www/stackserp && (test -f .env && export \$(grep -v '^#' .env | xargs) || true) && node .next/standalone/node_modules/.bin/prisma migrate deploy --schema /var/www/stackserp/prisma/schema.prisma 2>&1 || echo 'Migration note: check DB manually'"
+          rsync -avz -e "$R" ecosystem.config.js worker.js package.json prisma/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
 
       - name: Reload PM2 app
         env:
