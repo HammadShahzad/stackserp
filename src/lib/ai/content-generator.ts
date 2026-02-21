@@ -5,7 +5,7 @@
  * Ported from InvoiceCave's proven 680-line blog-generator.ts with
  * multi-website parameterization.
  */
-import { generateText, generateJSON, setModelOverride } from "./gemini";
+import { generateText, generateTextWithMeta, generateJSON, setModelOverride } from "./gemini";
 import { researchKeyword, ResearchResult } from "./research";
 import { generateBlogImage, generateInlineImage } from "../storage/image-generator";
 import type { Website, BlogSettings } from "@prisma/client";
@@ -270,15 +270,14 @@ export async function generateBlogPost(
   };
   const targetWords = wordTargets[contentLength] || wordTargets.MEDIUM;
 
-  // Token limits: enough for the content but not so high the model loops/repeats
-  // ~1 token ≈ 0.75 words, so 8192 tokens ≈ 6000 words (plenty for SHORT/MEDIUM)
-  const maxTokensForLength: Record<string, number> = {
+  // Token budget: generous enough for the model to finish, but capped per-step
+  const draftTokensForLength: Record<string, number> = {
     SHORT: 4096,
     MEDIUM: 8192,
-    LONG: 12288,
+    LONG: 16384,
     PILLAR: 16384,
   };
-  const outputTokens = maxTokensForLength[contentLength] || maxTokensForLength.MEDIUM;
+  const draftTokens = draftTokensForLength[contentLength] || draftTokensForLength.MEDIUM;
 
   const minWordsForLength: Record<string, number> = {
     SHORT: 600,
@@ -364,15 +363,25 @@ Return JSON: { "title": "...", "sections": [{ "heading": "...", "points": ["..."
 
   // ─── STEP 3: DRAFT ───────────────────────────────────────────────
   await progress("draft", "Writing full article draft...");
-  const draft = await generateText(
+
+  // Filter outline sections to only content sections (exclude Key Takeaways, TOC, FAQ)
+  const contentSections = outline.sections.filter(
+    (s) => !/^(key takeaways?|table of contents|faq|frequently asked)/i.test(s.heading)
+  );
+
+  const brandContext = [
+    ctx.targetLocation ? `Geographic context: Write for a ${ctx.targetLocation} audience — use relevant pricing, tools, and examples.` : "",
+    ctx.uniqueValueProp ? `Brand USP to highlight: "${ctx.uniqueValueProp}" — weave this into the conclusion and any tool/solution recommendations.` : "",
+    ctx.keyProducts?.length ? `Products/features to mention naturally where relevant: ${ctx.keyProducts.join(", ")}` : "",
+    ctx.competitors?.length ? `Context: ${ctx.brandName} competes with ${ctx.competitors.join(", ")} — don't mention competitors by name, but make ${ctx.brandName}'s approach clearly superior through specific examples.` : "",
+  ].filter(Boolean).join("\n");
+
+  const draftResult = await generateTextWithMeta(
     `Write a complete, ${targetWords}-word blog post about "${keyword}" for ${ctx.brandName}.
 
 Title: ${outline.title}
 Unique angle: ${outline.uniqueAngle}
-${ctx.targetLocation ? `Geographic context: Write for a ${ctx.targetLocation} audience — use relevant pricing, tools, and examples.` : ""}
-${ctx.uniqueValueProp ? `Brand USP to highlight: "${ctx.uniqueValueProp}" — weave this into the conclusion and any tool/solution recommendations.` : ""}
-${ctx.keyProducts?.length ? `Products/features to mention naturally where relevant: ${ctx.keyProducts.join(", ")}` : ""}
-${ctx.competitors?.length ? `Context: ${ctx.brandName} competes with ${ctx.competitors.join(", ")} — don't mention competitors by name, but make ${ctx.brandName}'s approach clearly superior through specific examples.` : ""}
+${brandContext}
 
 Outline to follow:
 ${outline.sections.map((s) => `## ${s.heading}\n${s.points.map((p) => `- ${p}`).join("\n")}`).join("\n\n")}
@@ -418,51 +427,129 @@ ${includeFAQ ? "- FAQ section (4-5 questions with detailed answers)" : ""}
 Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the hook paragraph.
 CRITICAL: Write the COMPLETE article with ALL sections from the outline. Do NOT stop after the Table of Contents.`,
     systemPrompt,
-    { temperature: 0.8, maxTokens: outputTokens }
+    { temperature: 0.8, maxTokens: draftTokens }
   );
 
-  // Dedup + word count check — retry if draft is too short
-  let cleanDraft = deduplicateContent(draft);
+  let cleanDraft = deduplicateContent(draftResult.text);
   let draftWords = countWords(cleanDraft);
-  console.log(`[content-gen] Draft attempt 1: ${draftWords} words (min: ${minExpectedWords})`);
+  console.log(`[content-gen] Draft attempt 1: ${draftWords} words (min: ${minExpectedWords}), finishReason: ${draftResult.finishReason}`);
 
-  if (draftWords < minExpectedWords) {
-    console.warn(`[content-gen] Draft too short (${draftWords} words). Retrying with explicit section requirements...`);
-    await progress("draft", "Draft was too short, retrying with stronger instructions...");
+  // Check which outline sections are actually present in the draft
+  function findMissingSections(content: string, sections: { heading: string }[]): string[] {
+    const h2s = (content.match(/^## .+$/gm) || []).map(h => h.replace(/^## /, "").trim().toLowerCase());
+    return sections.filter(s => {
+      const target = s.heading.toLowerCase();
+      return !h2s.some(h => h.includes(target) || target.includes(h) || levenshteinSimilar(h, target));
+    }).map(s => s.heading);
+  }
 
-    const retryDraft = await generateText(
-      `IMPORTANT: Your previous attempt only produced ${draftWords} words. I need a COMPLETE ${targetWords}-word article.
+  function levenshteinSimilar(a: string, b: string): boolean {
+    if (a.length < 5 || b.length < 5) return false;
+    const shorter = a.length < b.length ? a : b;
+    const longer = a.length < b.length ? b : a;
+    return longer.includes(shorter.slice(0, Math.floor(shorter.length * 0.7)));
+  }
 
-Write a full blog post about "${keyword}" for ${ctx.brandName}. You MUST write ALL of these sections:
+  const missingSections = findMissingSections(cleanDraft, contentSections);
+  const draftTruncated = draftResult.truncated;
+  const needsRetry = draftWords < minExpectedWords || missingSections.length >= 2 || draftTruncated;
 
-${outline.sections.map((s, i) => `${i + 1}. ## ${s.heading}\n   Write 200-400 words covering: ${s.points.join(", ")}`).join("\n\n")}
+  if (needsRetry) {
+    console.warn(`[content-gen] Draft incomplete: ${draftWords} words, ${missingSections.length} missing sections, truncated=${draftTruncated}`);
+    if (missingSections.length > 0) console.warn(`[content-gen] Missing: ${missingSections.join(", ")}`);
+    await progress("draft", "Draft was incomplete, rebuilding section by section...");
 
-${includeFAQ ? `${outline.sections.length + 1}. ## Frequently Asked Questions\n   Write 4-5 Q&A pairs` : ""}
+    // Fallback: generate each section independently, then stitch together
+    const sectionParts: string[] = [];
+    const wordsPerSection = Math.ceil(parseInt(targetWords.split("-")[1] || "2000") / contentSections.length);
 
-Start with a compelling opening paragraph (no H1 heading). Include Key Takeaways bullets after the intro.
-${includeTableOfContents ? "Include a Table of Contents after Key Takeaways." : ""}
-${isComparisonArticle ? "Include a markdown comparison table in one of the early sections." : ""}
-End with a conclusion and CTA for ${ctx.brandName}.
+    // Generate the intro (hook + key takeaways + TOC)
+    const introResult = await generateTextWithMeta(
+      `Write the opening for a blog post about "${keyword}" for ${ctx.brandName}.
+${brandContext}
 
-Write ${targetWords} words total. Use Markdown formatting. Write from expert perspective.
-Do NOT stop after the Table of Contents. Write EVERY section listed above.`,
+Include:
+1. A compelling 2-3 paragraph HOOK that drops the reader into a specific, relatable scenario
+2. A "Key Takeaways" section with 4-5 bullet points summarizing the article
+${includeTableOfContents ? `3. A Table of Contents with these exact headings:\n${contentSections.map(s => `- ${s.heading}`).join("\n")}` : ""}
+
+Write from an expert perspective. Use active voice. Do NOT use em-dashes.
+Do NOT write any of the main sections yet. STOP after the Table of Contents.
+Output only Markdown.`,
       systemPrompt,
-      { temperature: 0.85, maxTokens: outputTokens }
+      { temperature: 0.8, maxTokens: 2048 }
     );
+    sectionParts.push(introResult.text.trim());
+    console.log(`[content-gen] Intro: ${countWords(introResult.text)} words`);
 
-    const retryClean = deduplicateContent(retryDraft);
-    const retryWords = countWords(retryClean);
-    console.log(`[content-gen] Draft attempt 2: ${retryWords} words`);
+    // Generate each content section
+    for (let i = 0; i < contentSections.length; i++) {
+      const section = contentSections[i];
+      const isLast = i === contentSections.length - 1;
+      const sectionResult = await generateTextWithMeta(
+        `Write section ${i + 1} of a blog post about "${keyword}" for ${ctx.brandName}.
 
-    if (retryWords > draftWords) {
-      cleanDraft = retryClean;
-      draftWords = retryWords;
+## ${section.heading}
+Points to cover:
+${section.points.map(p => `- ${p}`).join("\n")}
+
+Context: This is a ${ctx.niche} article for ${ctx.targetAudience}.
+${brandContext}
+
+Rules:
+- Write ${wordsPerSection}-${wordsPerSection + 100} words for this section
+- Start with the H2 heading: ## ${section.heading}
+- Use a mix of prose, bullet lists, and data
+- Write from expert perspective with first-person insights
+- Keep paragraphs under 80 words
+- Do NOT use em-dashes, "delve," "dive deep," "game-changer," "leverage," "utilize"
+${isLast ? `- End with a strong conclusion paragraph and CTA for ${ctx.brandName}${ctx.ctaText ? `: "${ctx.ctaText}"` : ""}${ctx.ctaUrl ? ` (${ctx.ctaUrl})` : ""}` : ""}
+${isComparisonArticle && i === 0 ? "- Include a markdown comparison table in this section" : ""}
+
+Output ONLY this section in Markdown. Start with ## ${section.heading}`,
+        systemPrompt,
+        { temperature: 0.8, maxTokens: 2048 }
+      );
+      sectionParts.push(sectionResult.text.trim());
+      console.log(`[content-gen] Section ${i + 1} "${section.heading}": ${countWords(sectionResult.text)} words`);
+    }
+
+    // Generate FAQ if needed
+    if (includeFAQ) {
+      const faqResult = await generateTextWithMeta(
+        `Write a FAQ section for a blog post about "${keyword}" for ${ctx.brandName}.
+
+Write 4-5 frequently asked questions with detailed answers (2-3 sentences each).
+Format as:
+## Frequently Asked Questions
+### Question here?
+Answer here.
+
+Output ONLY the FAQ section in Markdown.`,
+        systemPrompt,
+        { temperature: 0.7, maxTokens: 1024 }
+      );
+      sectionParts.push(faqResult.text.trim());
+    }
+
+    const stitchedDraft = sectionParts.join("\n\n");
+    const stitchedWords = countWords(stitchedDraft);
+    console.log(`[content-gen] Section-by-section total: ${stitchedWords} words`);
+
+    if (stitchedWords > draftWords) {
+      cleanDraft = stitchedDraft;
+      draftWords = stitchedWords;
     }
   }
 
   // ─── STEP 4: CRITIQUE + TONE POLISH ─────────────────────────────
   await progress("tone", "Polishing voice — removing generic patterns...");
-  const toneRewritten = await generateText(
+
+  // Scale rewrite tokens based on actual draft size (1.5x the estimated input tokens)
+  const estimatedDraftTokens = Math.ceil(draftWords * 1.4);
+  const rewriteTokens = Math.max(8192, Math.ceil(estimatedDraftTokens * 1.5));
+
+  const toneResult = await generateTextWithMeta(
     `You are a senior editor at a sharp, opinionated media publication. Your job is to take a decent blog draft and make it genuinely great — the kind of article someone shares because it's actually useful AND enjoyable to read.
 
 Brand voice for ${ctx.brandName}: "${ctx.tone}"
@@ -500,12 +587,18 @@ ${cleanDraft}
 Output ONLY the polished blog post in Markdown. Start directly with the content.
 CRITICAL: Output the COMPLETE article — every section, every table, every paragraph. Do NOT stop early or truncate. Your output must be at LEAST ${draftWords} words.`,
     systemPrompt,
-    { temperature: 0.65, maxTokens: outputTokens }
+    { temperature: 0.65, maxTokens: rewriteTokens }
   );
 
-  const cleanTone = deduplicateContent(toneRewritten);
-  console.log(`[content-gen] Tone polish: ${countWords(cleanTone)} words (draft was ${draftWords})`);
-  const toneToUse = countWords(cleanTone) >= draftWords * 0.7 ? cleanTone : cleanDraft;
+  const cleanTone = deduplicateContent(toneResult.text);
+  const toneWords = countWords(cleanTone);
+  console.log(`[content-gen] Tone polish: ${toneWords} words (draft was ${draftWords}), finishReason: ${toneResult.finishReason}, tokens: ${toneResult.outputTokens}/${rewriteTokens}`);
+
+  // If tone was truncated (MAX_TOKENS) or lost too much content, fall back to draft
+  const toneToUse = (!toneResult.truncated && toneWords >= draftWords * 0.7) ? cleanTone : cleanDraft;
+  if (toneResult.truncated || toneWords < draftWords * 0.7) {
+    console.warn(`[content-gen] Tone step lost content or truncated. Using draft instead. (truncated=${toneResult.truncated}, toneWords=${toneWords})`);
+  }
 
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
   await progress("seo", "Optimizing for SEO — keywords, links, structure...");
@@ -537,7 +630,10 @@ CRITICAL: Output the COMPLETE article — every section, every table, every para
       consolidatedLinks.map((l) => `   - "${l.anchor}" → ${l.url}`).join("\n");
   }
 
-  const seoOptimized = await generateText(
+  const toneToUseWords = countWords(toneToUse);
+  const seoRewriteTokens = Math.max(8192, Math.ceil(toneToUseWords * 1.4 * 1.5));
+
+  const seoResult = await generateTextWithMeta(
     `You are an SEO expert. Optimize the following blog post for the keyword "${keyword}" while retaining the same writing style and tone.
 
 ## Rules:
@@ -564,30 +660,33 @@ ${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common quest
 11. If there's a table of contents, ensure it matches the actual headings
 12. Keep the article length at ${targetWords} words
 
-## Blog Post (${countWords(toneToUse)} words — preserve this length):
+## Blog Post (${toneToUseWords} words — preserve this length):
 ${toneToUse}
 
 Output ONLY the optimized blog post in Markdown format.
-CRITICAL: Output the COMPLETE article — every section, every table, every paragraph. Do NOT stop early or truncate. The output MUST be at least ${countWords(toneToUse)} words.`,
+CRITICAL: Output the COMPLETE article — every section, every table, every paragraph. Do NOT stop early or truncate. The output MUST be at least ${toneToUseWords} words.`,
     systemPrompt,
-    { temperature: 0.4, maxTokens: outputTokens }
+    { temperature: 0.4, maxTokens: seoRewriteTokens }
   );
 
-  const cleanSeo = deduplicateContent(seoOptimized);
-  console.log(`[content-gen] SEO optimize: ${countWords(cleanSeo)} words`);
-
-  // Safety check: pick the best version (longest non-duplicate content wins)
+  const cleanSeo = deduplicateContent(seoResult.text);
   const seoWords = countWords(cleanSeo);
-  const toneWords = countWords(toneToUse);
+  console.log(`[content-gen] SEO optimize: ${seoWords} words, finishReason: ${seoResult.finishReason}, tokens: ${seoResult.outputTokens}/${seoRewriteTokens}`);
 
+  // Safety: pick the longest non-truncated version
   let bestVersion = cleanSeo;
-  if (seoWords < toneWords * 0.6) {
-    console.warn(`[content-gen] SEO step lost content: ${seoWords} vs ${toneWords} words. Using tone version.`);
+  let bestLabel = "SEO";
+  if (seoResult.truncated || seoWords < toneToUseWords * 0.6) {
+    console.warn(`[content-gen] SEO step ${seoResult.truncated ? "was truncated" : "lost content"}: ${seoWords} vs ${toneToUseWords} words. Using tone version.`);
     bestVersion = toneToUse;
-  } else if (seoWords < draftWords * 0.5) {
-    console.warn(`[content-gen] All rewrites lost content. Using draft: ${draftWords} words.`);
-    bestVersion = cleanDraft;
+    bestLabel = "tone";
   }
+  if (countWords(bestVersion) < draftWords * 0.5) {
+    console.warn(`[content-gen] All rewrites lost content. Falling back to draft: ${draftWords} words.`);
+    bestVersion = cleanDraft;
+    bestLabel = "draft";
+  }
+  console.log(`[content-gen] Final version: ${bestLabel} (${countWords(bestVersion)} words)`);
 
   // Post-process: replace leftover [INTERNAL_LINK: ...] placeholders
   let finalContent = bestVersion;
