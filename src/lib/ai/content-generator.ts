@@ -246,10 +246,10 @@ export async function generateBlogPost(
   const targetWords = wordTargets[contentLength] || wordTargets.MEDIUM;
 
   const maxTokensForLength: Record<string, number> = {
-    SHORT: 8192,
-    MEDIUM: 12288,
-    LONG: 16384,
-    PILLAR: 24576,
+    SHORT: 16384,
+    MEDIUM: 32768,
+    LONG: 65536,
+    PILLAR: 65536,
   };
   const outputTokens = maxTokensForLength[contentLength] || maxTokensForLength.MEDIUM;
 
