@@ -125,6 +125,20 @@ export default function KeywordsPage() {
   const [isAddingSuggestions, setIsAddingSuggestions] = useState(false);
   const [suggestSeedKeyword, setSuggestSeedKeyword] = useState("");
 
+  // Restore pending suggestions from global context when navigating back to this page
+  const { addJob, updateJob, getJob, consumeResult } = useGlobalJobs();
+  const suggestJobId = `kw-suggest-${websiteId}`;
+  useEffect(() => {
+    const job = getJob(suggestJobId);
+    if (job?.status === "done" && !job.resultConsumed && job.resultData?.suggestions?.length) {
+      setSuggestions(job.resultData.suggestions);
+      setSelectedSuggestions(new Set(job.resultData.suggestions.map((s: Suggestion) => s.keyword)));
+      setShowSuggestDialog(true);
+      consumeResult(suggestJobId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Bulk generation
   const [isBulkGenerating, setIsBulkGenerating] = useState(false);
   const [bulkCount, setBulkCount] = useState(3);
@@ -205,8 +219,6 @@ export default function KeywordsPage() {
   };
 
   // ── AI keyword suggestions ──────────────────────────────
-  const { addJob, updateJob } = useGlobalJobs();
-  const suggestJobId = `kw-suggest-${websiteId}`;
   const suggestSteps = ["analyzing", "generating", "filtering"];
 
   const handleGetSuggestions = async () => {
@@ -243,8 +255,16 @@ export default function KeywordsPage() {
       updateJob(suggestJobId, { progress: 80, currentStep: "filtering" });
       const data = await res.json();
       if (res.ok) {
-        setSuggestions(data.suggestions || []);
-        updateJob(suggestJobId, { status: "done", progress: 100 });
+        const fetched: Suggestion[] = data.suggestions || [];
+        setSuggestions(fetched);
+        setSelectedSuggestions(new Set(fetched.map((s) => s.keyword)));
+        // Persist results in global context so they survive navigation
+        updateJob(suggestJobId, {
+          status: "done",
+          progress: 100,
+          resultData: { suggestions: fetched },
+          resultConsumed: false,
+        });
       } else {
         toast.error(data.error || "Failed to generate suggestions");
         updateJob(suggestJobId, { status: "failed", error: data.error || "Generation failed" });
@@ -271,6 +291,8 @@ export default function KeywordsPage() {
       if (res.ok) {
         toast.success(`Added ${data.imported} keywords to queue`);
         setShowSuggestDialog(false);
+        setSuggestions([]);
+        consumeResult(suggestJobId);
         fetchKeywords();
       }
     } catch { toast.error("Failed to add keywords"); }

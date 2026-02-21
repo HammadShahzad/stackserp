@@ -141,15 +141,22 @@ export function GlobalJobsWidget() {
                     )}
                     {cfg.label}
                   </div>
-                  <span className="text-xs font-medium truncate flex-1">
-                    {job.label}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs font-medium truncate block">
+                      {job.label}
+                    </span>
+                    {isDone && !job.resultConsumed && job.resultData && (
+                      <span className="text-[10px] text-blue-600 font-medium">
+                        Tap → to view results
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <Button
                       asChild
                       size="sm"
-                      variant="ghost"
-                      className="h-5 px-1.5 text-[10px]"
+                      variant={isDone && !job.resultConsumed && job.resultData ? "default" : "ghost"}
+                      className={`h-5 px-1.5 text-[10px] ${isDone && !job.resultConsumed && job.resultData ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
                     >
                       <Link href={job.href}>
                         <ArrowRight className="h-2.5 w-2.5" />

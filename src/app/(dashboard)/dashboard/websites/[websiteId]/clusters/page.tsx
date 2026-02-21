@@ -219,9 +219,24 @@ export default function ClustersPage() {
     fetchClusters();
   }, [fetchClusters]);
 
-  const { addJob, updateJob } = useGlobalJobs();
+  const { addJob, updateJob, getJob, consumeResult } = useGlobalJobs();
   const clusterJobId = `cluster-gen-${websiteId}`;
   const clusterSteps = ["crawling", "analyzing", "generating", "saving"];
+
+  // Restore pending cluster suggestions from global context when navigating back
+  useEffect(() => {
+    const job = getJob(clusterJobId);
+    if (job?.status === "done" && !job.resultConsumed && job.resultData?.suggestions?.length) {
+      setSuggestions(job.resultData.suggestions);
+      setSelectedSuggestions(new Set(
+        (job.resultData.suggestions as SuggestedCluster[]).map((_, i) => i)
+      ));
+      if (job.resultData.stepStatus) setStepStatus(job.resultData.stepStatus);
+      setShowReviewDialog(true);
+      consumeResult(clusterJobId);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAIGenerate = async () => {
     setIsGenerating(true);
@@ -261,20 +276,27 @@ export default function ClustersPage() {
         return;
       }
 
-      setStepStatus(data.steps ?? null);
+      const stepStatus = data.steps ?? null;
+      setStepStatus(stepStatus);
 
       if (!data.suggestions?.length) {
         setSuggestions([]);
         setSelectedSuggestions(new Set());
         setShowReviewDialog(true);
-        updateJob(clusterJobId, { status: "done", progress: 100 });
+        updateJob(clusterJobId, { status: "done", progress: 100, resultData: { suggestions: [], stepStatus }, resultConsumed: false });
         return;
       }
 
       setSuggestions(data.suggestions);
       setSelectedSuggestions(new Set(data.suggestions.map((_: SuggestedCluster, i: number) => i)));
       setShowReviewDialog(true);
-      updateJob(clusterJobId, { status: "done", progress: 100 });
+      // Persist results so they survive navigation
+      updateJob(clusterJobId, {
+        status: "done",
+        progress: 100,
+        resultData: { suggestions: data.suggestions, stepStatus },
+        resultConsumed: false,
+      });
     } catch {
       toast.error("Network error — please try again");
       updateJob(clusterJobId, { status: "failed", error: "Network error" });
@@ -299,6 +321,7 @@ export default function ClustersPage() {
       toast.success(`Saved ${toSave.length} topic clusters`);
       setShowReviewDialog(false);
       setSuggestions([]);
+      consumeResult(clusterJobId);
       fetchClusters();
     } catch {
       toast.error("Failed to save clusters");

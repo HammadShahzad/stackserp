@@ -23,8 +23,17 @@ export interface GlobalJob {
   currentStep?: string;
   /** Ordered list of step IDs */
   steps?: string[];
-  /** Extra data (e.g. error message) */
+  /** Error message */
   error?: string;
+  /**
+   * Persisted result payload — survives navigation.
+   * keywords job  → { suggestions: Suggestion[] }
+   * clusters job  → { suggestions: SuggestedCluster[], steps: StepStatus }
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  resultData?: Record<string, any>;
+  /** Whether the result has already been consumed/shown */
+  resultConsumed?: boolean;
   createdAt: number;
 }
 
@@ -34,6 +43,8 @@ interface GlobalJobsContextValue {
   updateJob: (id: string, patch: Partial<GlobalJob>) => void;
   removeJob: (id: string) => void;
   getJob: (id: string) => GlobalJob | undefined;
+  /** Mark a job's result as consumed so the auto-open dialog doesn't fire again */
+  consumeResult: (id: string) => void;
 }
 
 const GlobalJobsContext = createContext<GlobalJobsContextValue | null>(null);
@@ -74,9 +85,15 @@ export function GlobalJobsProvider({ children }: { children: ReactNode }) {
     []
   );
 
+  const consumeResult = useCallback((id: string) => {
+    setJobs((prev) =>
+      prev.map((j) => (j.id === id ? { ...j, resultConsumed: true } : j))
+    );
+  }, []);
+
   return (
     <GlobalJobsContext.Provider
-      value={{ jobs, addJob, updateJob, removeJob, getJob }}
+      value={{ jobs, addJob, updateJob, removeJob, getJob, consumeResult }}
     >
       {children}
     </GlobalJobsContext.Provider>
