@@ -309,7 +309,8 @@ export default function PostEditorPage() {
         if (fixed.addedH3s) messages.push("H3 subheadings added");
         if (fixed.expandedWords) messages.push("content expanded to 1500+ words");
         if (fixed.addedLinks) messages.push("internal links added");
-        toast.success(`Fixed: ${messages.join(", ") || "no issues found"}`);
+        if (fixed.tocRegenerated) messages.push("table of contents updated");
+        toast.success(`Fixed: ${messages.join(", ") || "content polished"}`);
       } else {
         toast.error(data.error || "Auto-fix failed");
       }
