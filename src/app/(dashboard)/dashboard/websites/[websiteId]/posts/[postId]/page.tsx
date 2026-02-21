@@ -50,6 +50,7 @@ import {
   CalendarClock,
   X,
   Globe,
+  Download,
 } from "lucide-react";
 // Lucide's Image component conflicts with Next.js <img>; alias to avoid naming clash
 import { Image as ImageIcon } from "lucide-react";
@@ -122,6 +123,7 @@ export default function PostEditorPage() {
   const [isRewriting, setIsRewriting] = useState(false);
   const [imagePromptInput, setImagePromptInput] = useState("");
   const [imageCacheBust, setImageCacheBust] = useState<number>(Date.now());
+  const [isDownloadingPDF, setIsDownloadingPDF] = useState(false);
   const [tagInput, setTagInput] = useState("");
   const [autoSlug, setAutoSlug] = useState(isNew);
 
@@ -447,6 +449,69 @@ export default function PostEditorPage() {
     );
   };
 
+  const handleDownloadPDF = async () => {
+    if (!post.content?.trim()) { toast.error("No content to export"); return; }
+    setIsDownloadingPDF(true);
+    try {
+      const html2pdf = (await import("html2pdf.js")).default;
+
+      const container = document.createElement("div");
+      container.style.cssText = "padding:40px 50px;max-width:800px;margin:0 auto;font-family:Georgia,serif;color:#1a1a1a;line-height:1.7;font-size:14px";
+
+      // Convert markdown to HTML using a simple render via the markdown editor's preview
+      const { Marked } = await import("marked");
+      const md = new Marked({ gfm: true, breaks: false });
+      const htmlContent = md.parse(post.content) as string;
+
+      container.innerHTML = `
+        <div style="margin-bottom:32px;padding-bottom:24px;border-bottom:2px solid #e5e5e5">
+          <h1 style="font-size:28px;margin:0 0 12px;line-height:1.3;color:#111">${post.title || "Untitled"}</h1>
+          ${post.focusKeyword ? `<p style="font-size:12px;color:#666;margin:0">Focus keyword: ${post.focusKeyword}</p>` : ""}
+          ${post.wordCount ? `<p style="font-size:12px;color:#666;margin:4px 0 0">Word count: ${post.wordCount} &middot; ${post.readingTime || Math.ceil(post.wordCount / 200)} min read</p>` : ""}
+        </div>
+        <style>
+          h2 { font-size:22px; margin:28px 0 12px; color:#111; border-bottom:1px solid #eee; padding-bottom:8px; }
+          h3 { font-size:18px; margin:20px 0 8px; color:#222; }
+          p { margin:0 0 12px; }
+          ul, ol { margin:0 0 12px; padding-left:24px; }
+          li { margin-bottom:4px; }
+          table { width:100%; border-collapse:collapse; margin:16px 0; font-size:13px; }
+          th { background:#f5f5f5; font-weight:600; text-align:left; padding:8px 12px; border:1px solid #ddd; }
+          td { padding:8px 12px; border:1px solid #ddd; }
+          blockquote { margin:16px 0; padding:12px 20px; border-left:4px solid #ddd; color:#555; background:#fafafa; }
+          code { background:#f3f3f3; padding:2px 6px; border-radius:3px; font-size:13px; }
+          a { color:#2563eb; text-decoration:underline; }
+          img { max-width:100%; height:auto; margin:12px 0; border-radius:8px; }
+        </style>
+        ${htmlContent}
+      `;
+
+      document.body.appendChild(container);
+
+      const slug = post.slug || post.title?.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 60) || "blog-post";
+
+      await html2pdf()
+        .set({
+          margin: [10, 10, 10, 10],
+          filename: `${slug}.pdf`,
+          image: { type: "jpeg", quality: 0.95 },
+          html2canvas: { scale: 2, useCORS: true, logging: false },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["avoid-all", "css", "legacy"] },
+        })
+        .from(container)
+        .save();
+
+      document.body.removeChild(container);
+      toast.success("PDF downloaded");
+    } catch (err) {
+      console.error("PDF download error:", err);
+      toast.error("Failed to generate PDF");
+    } finally {
+      setIsDownloadingPDF(false);
+    }
+  };
+
   const hasCMSIntegration = integrations.wp || integrations.shopify;
 
   const statusCfg = STATUS_CONFIG[post.status || "DRAFT"];
@@ -600,6 +665,14 @@ export default function PostEditorPage() {
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+
+          {/* ── Download PDF ── */}
+          {!isNew && (
+            <Button variant="outline" size="sm" onClick={handleDownloadPDF} disabled={isDownloadingPDF || !post.content?.trim()}>
+              {isDownloadingPDF ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+              PDF
+            </Button>
           )}
         </div>
       </div>
