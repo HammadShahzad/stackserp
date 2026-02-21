@@ -62,7 +62,6 @@ export async function getCurrentOrganization() {
 export async function getWebsite(websiteId: string) {
   const { session, organization } = await getCurrentOrganization();
 
-  // Try the user's own org first
   let website = await prisma.website.findFirst({
     where: {
       id: websiteId,
