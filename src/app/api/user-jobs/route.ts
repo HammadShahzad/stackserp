@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { verifyWebsiteAccess } from "@/lib/api-helpers";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -87,6 +88,10 @@ export async function POST(req: Request) {
 
   if (!type || !label || !websiteId)
     return NextResponse.json({ error: "type, label, websiteId required" }, { status: 400 });
+
+  // Verify the websiteId belongs to the current user's organization
+  const websiteAccess = await verifyWebsiteAccess(websiteId);
+  if ("error" in websiteAccess) return websiteAccess.error;
 
   const job = await prisma.userJob.upsert({
     where: { id: id || "none" },

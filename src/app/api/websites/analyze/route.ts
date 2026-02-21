@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { generateJSON } from "@/lib/ai/gemini";
+import { checkAiRateLimit } from "@/lib/api-helpers";
 
 interface WebsiteAnalysis {
   brandName: string;
@@ -24,6 +25,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Rate limit: 10 website analyses per hour per user
+    const rateLimitErr = checkAiRateLimit(session.user.id, "analyze", 10);
+    if (rateLimitErr) return rateLimitErr;
+
     const { name, domain } = await req.json();
 
     if (!name || !domain) {
@@ -31,6 +36,12 @@ export async function POST(req: Request) {
         { error: "name and domain are required" },
         { status: 400 }
       );
+    }
+    if (typeof name === "string" && name.length > 200) {
+      return NextResponse.json({ error: "name too long" }, { status: 400 });
+    }
+    if (typeof domain === "string" && domain.length > 253) {
+      return NextResponse.json({ error: "domain too long" }, { status: 400 });
     }
 
     // Step 1: Research the website using Perplexity

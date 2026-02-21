@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { verifyWebsiteAccess } from "@/lib/api-helpers";
+import { verifyWebsiteAccess, checkAiRateLimit } from "@/lib/api-helpers";
 import { generateClusterPreview, type ClusterKeyword } from "@/lib/ai/cluster-generator";
 
 export const maxDuration = 60;
@@ -54,6 +54,10 @@ export async function POST(
     const { websiteId } = await params;
     const access = await verifyWebsiteAccess(websiteId);
     if ("error" in access) return access.error;
+
+    // Rate limit: 10 cluster generations per hour per user
+    const rateLimitErr = checkAiRateLimit(access.session.user.id, "clusters", 10);
+    if (rateLimitErr) return rateLimitErr;
 
     const body = await req.json();
 

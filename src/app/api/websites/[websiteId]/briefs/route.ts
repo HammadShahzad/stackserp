@@ -9,6 +9,7 @@ import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateJSON } from "@/lib/ai/gemini";
 import { researchKeyword } from "@/lib/ai/research";
+import { checkAiRateLimit } from "@/lib/api-helpers";
 
 export const maxDuration = 60;
 
@@ -48,10 +49,17 @@ export async function POST(req: Request, { params }: Params) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
+  // Rate limit: 20 brief generations per hour per user
+  const rateLimitErr = checkAiRateLimit(session.user.id, "briefs", 20);
+  if (rateLimitErr) return rateLimitErr;
+
   const body = await req.json();
   const keyword = body.keyword?.trim();
   if (!keyword) {
     return NextResponse.json({ error: "keyword is required" }, { status: 400 });
+  }
+  if (keyword.length > 200) {
+    return NextResponse.json({ error: "Keyword too long (max 200 characters)" }, { status: 400 });
   }
 
   const website = await prisma.website.findUnique({

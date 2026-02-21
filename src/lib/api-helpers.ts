@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
+import { timingSafeEqual } from "crypto";
 
 export async function verifyWebsiteAccess(websiteId: string) {
   const session = await getServerSession(authOptions);
@@ -59,7 +60,20 @@ export function requireCronAuth(req: Request): NextResponse | null {
     );
   }
 
-  if (authHeader !== `Bearer ${cronSecret}`) {
+  const provided = authHeader?.replace(/^Bearer /, "") ?? "";
+  const expected = cronSecret;
+
+  // Constant-time comparison to prevent timing oracle attacks
+  let authorized = false;
+  try {
+    authorized =
+      provided.length === expected.length &&
+      timingSafeEqual(Buffer.from(provided), Buffer.from(expected));
+  } catch {
+    authorized = false;
+  }
+
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -81,27 +95,54 @@ export function validateUrl(url: unknown): url is string {
   }
 }
 
-const IP_RATE_STORE = new Map<string, { count: number; resetAt: number }>();
-const IP_WINDOW_MS = 60_000;
-const IP_MAX_REQUESTS = 10;
+const RATE_STORE = new Map<string, { count: number; resetAt: number }>();
 
-export function checkIpRateLimit(identifier: string): {
-  allowed: boolean;
-  remaining: number;
-} {
+function checkRateLimit(
+  identifier: string,
+  maxRequests: number,
+  windowMs: number
+): { allowed: boolean; remaining: number } {
   const now = Date.now();
-  let bucket = IP_RATE_STORE.get(identifier);
+  let bucket = RATE_STORE.get(identifier);
 
   if (!bucket || bucket.resetAt <= now) {
-    bucket = { count: 0, resetAt: now + IP_WINDOW_MS };
-    IP_RATE_STORE.set(identifier, bucket);
+    bucket = { count: 0, resetAt: now + windowMs };
+    RATE_STORE.set(identifier, bucket);
   }
 
   bucket.count++;
 
-  if (bucket.count > IP_MAX_REQUESTS) {
+  if (bucket.count > maxRequests) {
     return { allowed: false, remaining: 0 };
   }
 
-  return { allowed: true, remaining: IP_MAX_REQUESTS - bucket.count };
+  return { allowed: true, remaining: maxRequests - bucket.count };
+}
+
+/** 10 requests per minute per identifier (auth/IP rate limiting). */
+export function checkIpRateLimit(identifier: string) {
+  return checkRateLimit(identifier, 10, 60_000);
+}
+
+/**
+ * Per-user AI endpoint rate limiting.
+ * @param userId   Session user ID
+ * @param endpoint Short label to namespace (e.g. "ai-rewrite", "clusters")
+ * @param max      Max requests allowed in the window (default 20)
+ * @param windowMs Window in milliseconds (default 1 hour)
+ */
+export function checkAiRateLimit(
+  userId: string,
+  endpoint: string,
+  max = 20,
+  windowMs = 60 * 60_000
+): NextResponse | null {
+  const result = checkRateLimit(`ai:${endpoint}:${userId}`, max, windowMs);
+  if (!result.allowed) {
+    return NextResponse.json(
+      { error: `Rate limit exceeded. Max ${max} requests per hour for this feature.` },
+      { status: 429 }
+    );
+  }
+  return null;
 }

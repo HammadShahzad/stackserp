@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { generateText } from "@/lib/ai/gemini";
+import { checkAiRateLimit } from "@/lib/api-helpers";
 
 export const maxDuration = 30;
 
@@ -34,9 +35,16 @@ export async function POST(
     return NextResponse.json({ error: "Website not found" }, { status: 404 });
   }
 
+  // Rate limit: 30 rewrites per hour per user
+  const rateLimitErr = checkAiRateLimit(session.user.id, "ai-rewrite", 30);
+  if (rateLimitErr) return rateLimitErr;
+
   const { text, action, customPrompt } = await request.json();
   if (!text?.trim()) {
     return NextResponse.json({ error: "Text is required" }, { status: 400 });
+  }
+  if (text.length > 20_000) {
+    return NextResponse.json({ error: "Text too long (max 20,000 characters)" }, { status: 400 });
   }
 
   const actions: Record<string, string> = {

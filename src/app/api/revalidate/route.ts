@@ -1,17 +1,44 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
+import { timingSafeEqual } from "crypto";
 
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const secret = searchParams.get("secret");
-  const path = searchParams.get("path");
+// Use a dedicated REVALIDATE_SECRET (not the auth secret).
+// Set in .env:  REVALIDATE_SECRET="<random-hex>"
+// Call with:    Authorization: Bearer <REVALIDATE_SECRET>
+//               POST /api/revalidate  body: { "path": "/dashboard/..." }
+export async function POST(req: Request) {
+  const authHeader = req.headers.get("authorization");
+  const secret = process.env.REVALIDATE_SECRET;
 
-  if (secret !== process.env.NEXTAUTH_SECRET) {
-    return NextResponse.json({ error: "Invalid secret" }, { status: 401 });
+  if (!secret) {
+    return NextResponse.json({ error: "REVALIDATE_SECRET not configured" }, { status: 500 });
   }
 
-  if (!path) {
+  const provided = authHeader?.replace(/^Bearer /, "") || "";
+  let authorized = false;
+  try {
+    // Constant-time comparison to prevent timing attacks
+    authorized =
+      provided.length === secret.length &&
+      timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
+  } catch {
+    authorized = false;
+  }
+
+  if (!authorized) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const { path } = body;
+
+  if (!path || typeof path !== "string") {
     return NextResponse.json({ error: "path is required" }, { status: 400 });
+  }
+
+  // Prevent path traversal: only allow absolute paths starting with /
+  if (!path.startsWith("/")) {
+    return NextResponse.json({ error: "path must start with /" }, { status: 400 });
   }
 
   revalidatePath(path);

@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import prisma from "@/lib/prisma";
 import { enqueueGenerationJob, processJob } from "@/lib/job-queue";
+import { verifyWebsiteAccess } from "@/lib/api-helpers";
 
 export async function POST(
   req: Request,
@@ -15,9 +16,22 @@ export async function POST(
     }
 
     const { websiteId } = await params;
+
+    // Verify the current user actually owns this website
+    const access = await verifyWebsiteAccess(websiteId);
+    if ("error" in access) return access.error;
+
     const { keywordIds, count = 3, contentLength = "MEDIUM", autoPublish = false } = await req.json();
 
-    // Check subscription limit
+    // Validate inputs
+    if (count !== undefined && (typeof count !== "number" || count < 1 || count > 10)) {
+      return NextResponse.json({ error: "count must be between 1 and 10" }, { status: 400 });
+    }
+    if (!["SHORT", "MEDIUM"].includes(contentLength)) {
+      return NextResponse.json({ error: "Invalid contentLength" }, { status: 400 });
+    }
+
+    // Check subscription limit (scoped to the verified org)
     const membership = await prisma.organizationMember.findFirst({
       where: { userId: session.user.id },
       include: { organization: { include: { subscription: true } } },

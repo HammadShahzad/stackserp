@@ -89,6 +89,12 @@ export async function POST(
     if (!title || !content) {
       return NextResponse.json({ error: "Title and content are required" }, { status: 400 });
     }
+    if (typeof title === "string" && title.length > 500) {
+      return NextResponse.json({ error: "Title too long (max 500 characters)" }, { status: 400 });
+    }
+    if (typeof content === "string" && content.length > 500_000) {
+      return NextResponse.json({ error: "Content too large (max 500,000 characters)" }, { status: 400 });
+    }
 
     // Generate slug from title
     const baseSlug = title.toLowerCase()

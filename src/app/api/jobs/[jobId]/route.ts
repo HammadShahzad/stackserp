@@ -10,6 +10,31 @@ import prisma from "@/lib/prisma";
 
 const STUCK_THRESHOLD_MS = 20 * 60 * 1000; // 20 minutes
 
+/** Returns the job only if the current user has access to its website. */
+async function getJobWithOwnership(jobId: string, userId: string, isAdmin: boolean) {
+  const job = await prisma.generationJob.findUnique({
+    where: { id: jobId },
+    select: { id: true, websiteId: true, keywordId: true },
+  });
+  if (!job) return null;
+
+  if (isAdmin) return job;
+
+  // Verify user belongs to the org that owns this website
+  const membership = await prisma.organizationMember.findFirst({
+    where: { userId },
+    select: { organizationId: true },
+  });
+  if (!membership) return null;
+
+  const website = await prisma.website.findFirst({
+    where: { id: job.websiteId, organizationId: membership.organizationId },
+    select: { id: true },
+  });
+
+  return website ? job : null;
+}
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ jobId: string }> }
@@ -21,29 +46,33 @@ export async function GET(
     }
 
     const { jobId } = await params;
-    const job = await getJobStatus(jobId);
+    const isAdmin = (session.user as { systemRole?: string }).systemRole === "ADMIN";
 
+    // IDOR fix: verify ownership before exposing job data
+    const ownership = await getJobWithOwnership(jobId, session.user.id, isAdmin);
+    if (!ownership) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    const job = await getJobStatus(jobId);
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
-    // Auto-detect stuck jobs: PROCESSING but started > 10 min ago
+    // Auto-detect stuck jobs: PROCESSING but started > threshold
     const isStuck =
       job.status === "PROCESSING" &&
       job.startedAt &&
       Date.now() - new Date(job.startedAt).getTime() > STUCK_THRESHOLD_MS;
 
     if (isStuck) {
-      // Reset to QUEUED so user can retry
       await prisma.generationJob.update({
         where: { id: jobId },
         data: { status: "FAILED", error: "Job timed out. Click Retry to try again.", completedAt: new Date() },
       });
-      // Also reset keyword status
-      const rawJob = await prisma.generationJob.findUnique({ where: { id: jobId }, select: { keywordId: true } });
-      if (rawJob?.keywordId) {
+      if (ownership.keywordId) {
         await prisma.blogKeyword.update({
-          where: { id: rawJob.keywordId },
+          where: { id: ownership.keywordId },
           data: { status: "FAILED", errorMessage: "Generation timed out" },
         });
       }
@@ -76,10 +105,22 @@ export async function POST(
     }
 
     const { jobId } = await params;
+    const isAdmin = (session.user as { systemRole?: string }).systemRole === "ADMIN";
+
+    // IDOR fix: verify ownership before allowing retry
+    const ownership = await getJobWithOwnership(jobId, session.user.id, isAdmin);
+    if (!ownership) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
     const job = await prisma.generationJob.findUnique({ where: { id: jobId } });
     if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
 
-    // Reset job + keyword to allow reprocessing
+    // Only allow retrying failed/stuck jobs (not actively processing ones)
+    if (job.status === "PROCESSING" || job.status === "QUEUED") {
+      return NextResponse.json({ error: "Job is already running" }, { status: 409 });
+    }
+
     await prisma.generationJob.update({
       where: { id: jobId },
       data: { status: "QUEUED", error: null, startedAt: null, completedAt: null, progress: 0, currentStep: null },
@@ -91,7 +132,6 @@ export async function POST(
       });
     }
 
-    // Reprocess using after() to keep function alive
     after(async () => {
       try {
         await processJob(jobId);

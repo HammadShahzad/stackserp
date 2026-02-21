@@ -66,6 +66,9 @@ export async function POST(
     if (!keyword?.trim()) {
       return NextResponse.json({ error: "Keyword is required" }, { status: 400 });
     }
+    if (typeof keyword !== "string" || keyword.trim().length > 300) {
+      return NextResponse.json({ error: "Keyword too long (max 300 characters)" }, { status: 400 });
+    }
 
     // Check for duplicate
     const existing = await prisma.blogKeyword.findFirst({
