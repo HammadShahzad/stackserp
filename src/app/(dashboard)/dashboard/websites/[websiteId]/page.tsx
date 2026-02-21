@@ -137,7 +137,7 @@ export default async function WebsiteDashboard({
       )}
 
       {/* Brand Intelligence completion prompt */}
-      {!(website as Record<string, unknown>).uniqueValueProp && (
+      {!website.uniqueValueProp && (
         <div className="flex items-center justify-between gap-4 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-background to-primary/5 p-4">
           <div className="flex items-center gap-3 min-w-0">
             <div className="shrink-0 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
