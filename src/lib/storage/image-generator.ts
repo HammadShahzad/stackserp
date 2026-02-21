@@ -218,7 +218,7 @@ async function generateWithImagen(
 
       if (!response.ok) {
         const err = await response.text();
-        console.error(`[Imagen ${IMAGEN_MODEL}] attempt ${attempt}/${retries} — ${response.status}:`, err);
+        console.error(`[Imagen ${model}] attempt ${attempt}/${retries} — ${response.status}:`, err);
         lastError = new Error(`Imagen API error (${response.status}): ${err}`);
 
         if (response.status === 429) {
