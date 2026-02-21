@@ -472,7 +472,8 @@ export default function PostEditorPage() {
   <title>${safeTitle}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { padding: 48px 56px; max-width: 780px; margin: 0 auto; font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.75; font-size: 14px; background: #fff; }
+    html { background: #fff; }
+    body { padding: 48px 56px; font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; line-height: 1.75; font-size: 14px; background: #fff; }
     .pdf-header { margin-bottom: 32px; padding-bottom: 24px; border-bottom: 2px solid #e5e5e5; }
     .pdf-header h1 { font-size: 26px; margin: 0 0 10px; line-height: 1.3; color: #111; }
     .pdf-meta { font-size: 12px; color: #777; margin-top: 6px; }
@@ -493,8 +494,9 @@ export default function PostEditorPage() {
     img { max-width: 100%; height: auto; margin: 12px 0; border-radius: 4px; }
     hr { border: none; border-top: 1px solid #e5e5e5; margin: 24px 0; }
     @media print {
-      body { padding: 0; }
-      @page { margin: 18mm 18mm 18mm 18mm; size: A4; }
+      html, body { background: #fff !important; }
+      body { padding: 0; max-width: 100%; }
+      @page { margin: 20mm 20mm 20mm 20mm; size: A4; background: #fff; }
       h2, h3 { page-break-after: avoid; }
       table, figure { page-break-inside: avoid; }
     }
