@@ -245,6 +245,14 @@ export async function generateBlogPost(
   };
   const targetWords = wordTargets[contentLength] || wordTargets.MEDIUM;
 
+  const maxTokensForLength: Record<string, number> = {
+    SHORT: 8192,
+    MEDIUM: 12288,
+    LONG: 16384,
+    PILLAR: 24576,
+  };
+  const outputTokens = maxTokensForLength[contentLength] || maxTokensForLength.MEDIUM;
+
   const progress = async (step: typeof STEPS[number], message: string) => {
     const stepIndex = STEPS.indexOf(step);
     if (onProgress) {
@@ -374,7 +382,7 @@ ${includeFAQ ? "- FAQ section (4-5 questions with detailed answers)" : ""}
 
 Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the hook paragraph.`,
     systemPrompt,
-    { temperature: 0.8, maxTokens: contentLength === "PILLAR" ? 16384 : contentLength === "LONG" ? 12288 : 8192 }
+    { temperature: 0.8, maxTokens: outputTokens }
   );
 
   // ─── STEP 4: CRITIQUE + TONE POLISH ─────────────────────────────
@@ -414,9 +422,10 @@ Audience: ${ctx.targetAudience}
 ## Draft to edit:
 ${draft}
 
-Output ONLY the polished blog post in Markdown. Start directly with the content.`,
+Output ONLY the polished blog post in Markdown. Start directly with the content.
+CRITICAL: Output the COMPLETE article — every section, every table, every paragraph. Do NOT stop early or truncate.`,
     systemPrompt,
-    { temperature: 0.65 }
+    { temperature: 0.65, maxTokens: outputTokens }
   );
 
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
@@ -478,13 +487,28 @@ ${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common quest
 ## Blog Post:
 ${toneRewritten}
 
-Output ONLY the optimized blog post in Markdown format.`,
+Output ONLY the optimized blog post in Markdown format.
+CRITICAL: Output the COMPLETE article — every section, every table, every paragraph. Do NOT stop early or truncate. The output MUST be at least ${targetWords} words.`,
     systemPrompt,
-    { temperature: 0.4 }
+    { temperature: 0.4, maxTokens: outputTokens }
   );
 
+  // Safety check: if the SEO step truncated the article, fall back to the tone-polished version
+  const seoWordCount = countWords(seoOptimized);
+  const toneWordCount = countWords(toneRewritten);
+  const draftWordCount = countWords(draft);
+
+  let bestVersion = seoOptimized;
+  if (seoWordCount < toneWordCount * 0.6) {
+    console.warn(`[content-gen] SEO step truncated article: ${seoWordCount} words vs ${toneWordCount} in tone step. Falling back to tone version.`);
+    bestVersion = toneRewritten;
+  } else if (seoWordCount < draftWordCount * 0.5) {
+    console.warn(`[content-gen] SEO step severely truncated: ${seoWordCount} words vs ${draftWordCount} draft. Falling back to draft.`);
+    bestVersion = draft;
+  }
+
   // Post-process: replace leftover [INTERNAL_LINK: ...] placeholders
-  let finalContent = seoOptimized;
+  let finalContent = bestVersion;
   if (ctx.internalLinks?.length) {
     finalContent = finalContent.replace(
       /\[INTERNAL_LINK:\s*([^\]]+)\]/gi,
