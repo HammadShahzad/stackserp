@@ -21,10 +21,10 @@ export async function POST(
       return NextResponse.json({ error: "postId is required" }, { status: 400 });
     }
 
-    // Load website WP config
+    // Load website WP config + brand details for link rewriting
     const website = await prisma.website.findUnique({
       where: { id: websiteId },
-      select: { cmsType: true, cmsApiUrl: true, cmsApiKey: true },
+      select: { cmsType: true, cmsApiUrl: true, cmsApiKey: true, brandUrl: true, customDomain: true, subdomain: true },
     });
 
     if (!website?.cmsApiUrl || !website?.cmsApiKey) {
@@ -53,9 +53,42 @@ export async function POST(
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
+    // Rewrite internal links from StackSerp blog URL format → WordPress URL
+    // Content links are built as: brandUrl/blog/slug (or customDomain/slug)
+    // WordPress expects them at: wordpressSiteUrl/slug
+    const brandUrl = (website.brandUrl || "").replace(/\/$/, "");
+    const stackserpBlogBase = website.subdomain
+      ? `${process.env.NEXTAUTH_URL}/blog/${website.subdomain}`
+      : null;
+    const brandBlogBase = website.customDomain
+      ? `https://${website.customDomain}`
+      : brandUrl ? `${brandUrl}/blog` : null;
+    const wpBase = wpConfig.siteUrl.replace(/\/$/, "");
+
+    function rewriteInternalLinks(content: string): string {
+      let result = content;
+      // Rewrite brandUrl/blog/slug → wpBase/slug
+      if (brandBlogBase && brandBlogBase !== wpBase) {
+        result = result.replace(
+          new RegExp(brandBlogBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/", "g"),
+          `${wpBase}/`
+        );
+      }
+      // Rewrite stackserp.com/blog/subdomain/slug → wpBase/slug
+      if (stackserpBlogBase) {
+        result = result.replace(
+          new RegExp(stackserpBlogBase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "/", "g"),
+          `${wpBase}/`
+        );
+      }
+      return result;
+    }
+
+    const postContent = rewriteInternalLinks(post.content);
+
     const postPayload = {
       title: post.title,
-      content: post.content,
+      content: postContent,
       excerpt: post.excerpt || undefined,
       slug: post.slug,
       status: status as "draft" | "publish",
@@ -85,7 +118,8 @@ export async function POST(
     if (result.wpPostUrl) {
       await prisma.blogPost.update({
         where: { id: postId },
-        data: { externalUrl: result.wpPostUrl },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        data: { externalUrl: result.wpPostUrl } as any,
       });
     }
 
