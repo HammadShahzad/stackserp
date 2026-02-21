@@ -262,6 +262,7 @@ Return JSON: { "title": "...", "sections": [{ "heading": "...", "points": ["..."
     `Write a complete, ${targetWords}-word blog post about "${keyword}" for ${ctx.brandName}.
 
 Title: ${outline.title}
+Unique angle: ${outline.uniqueAngle}
 
 Outline to follow:
 ${outline.sections.map((s) => `## ${s.heading}\n${s.points.map((p) => `- ${p}`).join("\n")}`).join("\n\n")}
@@ -269,61 +270,81 @@ ${outline.sections.map((s) => `## ${s.heading}\n${s.points.map((p) => `- ${p}`).
 Research data to incorporate:
 ${research.rawResearch.substring(0, 4000)}
 
-## Guidelines:
-1. Write ${targetWords} words (aim for comprehensive coverage that beats competitors)
-2. Use a conversational, engaging tone — ${ctx.tone}
-3. Start with a table of contents linking to each H2 section
-4. Include an attention-grabbing introduction that uses the exact keyword "${keyword}" in the first 100 words
-5. Break content into clear sections with H2 and H3 headings (use keyword in at least one H2)
-6. Include practical tips, examples, and actionable advice
-7. Add bullet points, numbered lists, and comparison tables where appropriate
-8. Include statistics and data points from the research with context
-9. Add a "Key Takeaways" or "Quick Summary" box near the top for skimmers
-10. End with a strong conclusion that includes the keyword and a CTA mentioning ${ctx.brandName}
-11. Write in Markdown format
-12. Make it SEO-friendly by naturally incorporating the keyword and related terms
-13. Cover everything competitors cover PLUS the content gaps identified in research
-19. CRITICAL READABILITY RULE: Keep every paragraph to 3-4 sentences MAX (under 80 words). Break long paragraphs into shorter ones. Use blank lines between paragraphs. Readers skim, so shorter blocks are always better.
-${includeFAQ ? "14. Include a FAQ section near the end with 4-5 common questions and detailed answers" : ""}
-15. Write from an EXPERT PERSPECTIVE — use phrases like "In my testing," "I've found that," "From my experience," "What I noticed is" to share first-hand insights
-16. Add 2-3 "Pro Tip:" callouts per section that share insider knowledge only an expert would know
-17. NEVER use these AI phrases: "delve," "dive deep," "in today's fast-paced world," "game-changer," "leverage," "utilize," "tapestry," "landscape" (metaphorically), "realm," "robust," "cutting-edge," "embark on a journey," "navigating the complexities," "unlock the power"
-18. NEVER use em-dash (—). Use commas, periods, or semicolons instead
+## Writing Guidelines:
 
-Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the introduction paragraph.`,
+**HOOK (most important rule):**
+The opening 2-3 paragraphs MUST drop the reader into a SPECIFIC, RELATABLE SITUATION before introducing the topic.
+Think: paint a vivid scene the audience has lived through. A frustrated late-night moment, a specific pain point, a surprising contrast.
+BAD opening: "Getting X used to be straightforward. Now it's complicated."
+BAD opening: "In today's competitive landscape..."
+GOOD opening: Put the reader IN a moment. Make them think "that's me."
+
+**Structure:**
+1. Open with the HOOK (story/scenario/question) — NO table of contents yet
+2. Key Takeaways / Quick Summary box (bulleted, 4-5 points)
+3. Table of Contents (linking to H2 sections — MUST match the actual H2 headings EXACTLY, character for character)
+4. Main sections following the outline
+5. ${includeFAQ ? "FAQ section (4-5 questions with detailed answers)" : ""}
+6. Conclusion with CTA for ${ctx.brandName}
+
+**Content rules:**
+- Write ${targetWords} words — comprehensive, beats competitors
+- Every section must have a DIFFERENT internal structure: mix of prose, bullet lists, numbered steps, comparison tables, code snippets (if relevant), or callout boxes
+- Include real statistics and data from the research with context
+- Use the keyword "${keyword}" naturally — in first 100 words, one H2, and conclusion
+- Write from an EXPERT perspective: "In my testing," "I've found," "From my experience," "What I noticed"
+- EXPERT CALLOUTS: use at most 2 total "Pro Tip:" callouts in the ENTIRE article. Make them count — share something non-obvious that only someone with real experience would know. DO NOT add a "Pro Tip" in every section.
+- Keep every paragraph under 80 words (3-4 sentences max)
+- Use active voice, concrete examples, and specific numbers
+- NEVER use: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "landscape" (metaphorical), "realm," "robust," "cutting-edge," "embark on a journey," "navigating the complexities," "unlock the power"
+- NEVER use em-dash (—). Use commas or periods instead.
+- Write in Markdown format
+
+Output ONLY the blog post content in Markdown. Do not include the title as an H1 — start with the hook paragraph.`,
     systemPrompt,
-    { temperature: 0.75, maxTokens: 8192 }
+    { temperature: 0.8, maxTokens: 8192 }
   );
 
-  // ─── STEP 4: TONE REWRITE ────────────────────────────────────────
-  await progress("tone", "Refining brand voice and tone...");
+  // ─── STEP 4: CRITIQUE + TONE POLISH ─────────────────────────────
+  await progress("tone", "Polishing voice — removing generic patterns...");
   const toneRewritten = await generateText(
-    `You are a witty, self-aware writer who combines humor with genuinely insightful content. Think of a cheeky uncle who is also a thoughtful mentor. You make even dry topics feel like a standup set with useful takeaways.
+    `You are a senior editor at a sharp, opinionated media publication. Your job is to take a decent blog draft and make it genuinely great — the kind of article someone shares because it's actually useful AND enjoyable to read.
 
-Rewrite the following blog post for ${ctx.brandName} to be more engaging, conversational, and fun to read. The brand voice is: "${ctx.tone}". Keep ALL the factual information, data, and structure intact. Just improve the tone:
+Brand voice for ${ctx.brandName}: "${ctx.tone}"
+Audience: ${ctx.targetAudience}
 
-- Add humor and personality (dad jokes, pop culture references, playful sarcasm where appropriate)
-- Use relatable analogies that ${ctx.targetAudience} would appreciate
-- Make transitions smooth and natural
-- Keep it professional enough for a business audience
-- Don't overdo it: 80% informative, 20% entertaining
-- The content should feel natural, engaging, and authentic, not like generic AI writing
-- Ensure the keyword "${keyword}" appears naturally in the first 100 words
-- Do NOT add any new sections, only refine the existing content
-- Maintain all Markdown formatting, headings, lists, and tables
-- CRITICAL: Write from a FIRST-PERSON expert perspective. Use "I've found," "In my testing," "From my experience," "What I noticed" throughout. The reader should feel like they're getting advice from a real expert, not a robot.
-- NEVER use these banned AI words/phrases: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "landscape" (metaphorical), "realm," "robust," "cutting-edge," "embark on a journey," "navigating the complexities," "unlock the power/potential," "it's important to note," "in today's fast-paced world"
-- NEVER use the em-dash character. Use commas or periods instead.
-- AVOID starting sentences with "So," or "Well,"
-- AVOID formal transitions like "Furthermore," "Moreover," "Additionally" - use natural ones instead
-- READABILITY: Keep every paragraph to 3-4 sentences max (under 80 words). Break any long paragraph into shorter ones. Short paragraphs are easier to scan.
+## Your editing checklist (apply ALL of these):
 
-## Blog Post:
+**Kill generic patterns:**
+- If the opening paragraph sounds like every other article on this topic, rewrite it with a specific scene, question, or startling observation that immediately pulls the reader in
+- Count the "Pro Tip:" labels. If there are more than 2, delete the weakest ones and fold those insights naturally into the surrounding prose
+- If any paragraph starts with "It is important to...", "In today's...", "As a [profession]...", or "With the rise of...", rewrite it completely
+- If any two sections have the same rhythm/structure, change one of them
+
+**Add genuine personality:**
+- One well-placed pop culture reference, analogy, or moment of deadpan humor per 500 words (don't force it — only where it fits naturally)
+- Use relatable comparisons specific to ${ctx.targetAudience}
+- Where the draft states a generic opinion, replace it with a specific observation: "In my testing X happened" beats "experts say X is good"
+
+**Tighten language:**
+- Eliminate all em-dashes (—) — replace with commas or periods
+- No "Furthermore," "Moreover," "Additionally" — use normal transitions
+- No starting sentences with "So," or "Well,"
+- Kill every instance of: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "realm," "robust," "cutting-edge," "embark on a journey," "navigate the complexities," "unlock the power"
+- Keep every paragraph under 80 words. Split anything longer.
+
+**Preserve everything structural:**
+- Keep ALL headings exactly as written (character for character — the TOC depends on them matching)
+- Keep all facts, data, statistics, and internal links
+- Keep Markdown formatting, tables, code blocks, bullet lists
+- Do NOT add new H2 sections
+
+## Draft to edit:
 ${draft}
 
-Output ONLY the rewritten blog post in Markdown format. Preserve all headings and structure.`,
+Output ONLY the polished blog post in Markdown. Start directly with the content.`,
     systemPrompt,
-    { temperature: 0.7 }
+    { temperature: 0.65 }
   );
 
   // ─── STEP 5: SEO OPTIMIZATION ────────────────────────────────────
@@ -417,6 +438,33 @@ Output ONLY the optimized blog post in Markdown format.`,
       return fullMatch;
     }
   );
+
+  // Post-process: fix TOC entries to match actual headings exactly
+  // Prevents "zing for Long-Tail AI Prompts" style truncation bugs
+  finalContent = (() => {
+    const lines = finalContent.split("\n");
+    // Build a map of anchor → actual heading text from the real headings
+    const headingMap = new Map<string, string>();
+    for (const line of lines) {
+      const h = line.match(/^(#{2,3})\s+(.+)$/);
+      if (!h) continue;
+      const text = h[2].trim();
+      if (/^table of contents$/i.test(text)) continue;
+      const anchor = text.toLowerCase().replace(/[`*_[\]()]/g, "").replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-");
+      headingMap.set(anchor, text);
+    }
+    // Rewrite TOC link labels to match actual heading text
+    return lines.map((line) => {
+      const tocLink = line.match(/^(\s*-\s+\[)([^\]]+)(\]\(#)([^)]+)(\))/);
+      if (!tocLink) return line;
+      const anchor = tocLink[4];
+      const correctText = headingMap.get(anchor);
+      if (correctText && correctText !== tocLink[2]) {
+        return `${tocLink[1]}${correctText}${tocLink[3]}${anchor}${tocLink[5]}`;
+      }
+      return line;
+    }).join("\n");
+  })();
 
   // Post-process: break overly long paragraphs (>80 words) for readability
   finalContent = finalContent
