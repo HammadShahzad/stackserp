@@ -568,8 +568,8 @@ model Subscription {
 
   // Limits (based on plan, cached here)
   maxWebsites      Int @default(1)
-  maxPostsPerMonth Int @default(5)
-  maxImagesPerMonth Int @default(5)
+  maxPostsPerMonth Int @default(2)
+  maxImagesPerMonth Int @default(2)
 
   currentPeriodEnd  DateTime?
   cancelAtPeriodEnd Boolean @default(false)

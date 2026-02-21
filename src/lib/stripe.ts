@@ -19,8 +19,8 @@ export const PLANS = {
     priceId: null,
     features: {
       maxWebsites: 1,
-      maxPostsPerMonth: 5,
-      maxImagesPerMonth: 5,
+      maxPostsPerMonth: 2,
+      maxImagesPerMonth: 2,
       apiAccess: false,
       cmsPush: false,
       socialPublishing: false,

@@ -88,8 +88,8 @@ export async function POST(req: Request) {
         organizationId: org.id,
         userId: user.id,
         maxWebsites: 1,
-        maxPostsPerMonth: 5,
-        maxImagesPerMonth: 5,
+        maxPostsPerMonth: 2,
+        maxImagesPerMonth: 2,
       },
     });
 

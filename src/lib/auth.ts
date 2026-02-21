@@ -112,8 +112,8 @@ export const authOptions: NextAuthOptions = {
               organizationId: org.id,
               userId: newUser.id,
               maxWebsites: 1,
-              maxPostsPerMonth: 5,
-              maxImagesPerMonth: 5,
+              maxPostsPerMonth: 2,
+              maxImagesPerMonth: 2,
             },
           });
         } else {

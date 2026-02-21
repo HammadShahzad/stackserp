@@ -24,8 +24,8 @@ const plans = [
     cta: "Get Started Free",
     features: {
       websites: "1",
-      postsPerMonth: "5",
-      aiImages: "5",
+      postsPerMonth: "2",
+      aiImages: "2",
       apiAccess: false,
       cmsPush: false,
       socialPublishing: false,

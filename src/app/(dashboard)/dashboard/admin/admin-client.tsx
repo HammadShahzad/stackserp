@@ -138,7 +138,7 @@ function UsersTab() {
   const [isUpdating, setIsUpdating] = useState(false);
 
   const PLAN_LIMITS: Record<string, { maxWebsites: number; maxPosts: number; maxImages: number }> = {
-    FREE:       { maxWebsites: 1,   maxPosts: 5,    maxImages: 5 },
+    FREE:       { maxWebsites: 1,   maxPosts: 2,    maxImages: 2 },
     STARTER:    { maxWebsites: 3,   maxPosts: 25,   maxImages: 25 },
     GROWTH:     { maxWebsites: 10,  maxPosts: 100,  maxImages: 100 },
     AGENCY:     { maxWebsites: 50,  maxPosts: 500,  maxImages: 500 },
