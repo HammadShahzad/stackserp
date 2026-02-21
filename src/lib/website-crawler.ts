@@ -8,6 +8,8 @@ export interface CrawlResult {
   favicon: string | null;
   pages: { title: string; url: string }[];
   sitemapUrls: string[];
+  pageText: string;
+  metaDescription: string;
 }
 
 function absoluteUrl(base: string, href: string): string | null {
@@ -82,6 +84,32 @@ function extractTitle(html: string): string {
   return match ? match[1].replace(/\s+/g, " ").trim() : "";
 }
 
+function extractMetaDescription(html: string): string {
+  const match = html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']*)["']/i)
+    || html.match(/<meta[^>]*content=["']([^"']*)["'][^>]*name=["']description["']/i);
+  return match ? match[1].trim() : "";
+}
+
+function extractPageText(html: string): string {
+  let text = html;
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, " ");
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, " ");
+  text = text.replace(/<nav[\s\S]*?<\/nav>/gi, " ");
+  text = text.replace(/<footer[\s\S]*?<\/footer>/gi, " ");
+  text = text.replace(/<header[\s\S]*?<\/header>/gi, " [HEADER] ");
+  text = text.replace(/<!--[\s\S]*?-->/g, " ");
+  text = text.replace(/<(h[1-6])[^>]*>([\s\S]*?)<\/\1>/gi, (_, _tag, content) => {
+    return "\n" + content.replace(/<[^>]+>/g, "").trim() + "\n";
+  });
+  text = text.replace(/<(p|li|div|section|article|blockquote)[^>]*>/gi, "\n");
+  text = text.replace(/<br\s*\/?>/gi, "\n");
+  text = text.replace(/<[^>]+>/g, " ");
+  text = text.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&#?\w+;/g, " ");
+  text = text.replace(/[ \t]+/g, " ");
+  text = text.replace(/\n{3,}/g, "\n\n");
+  return text.trim().slice(0, 5000);
+}
+
 async function fetchSitemap(baseUrl: string): Promise<string[]> {
   const urls: string[] = [];
   const sitemapUrl = `${baseUrl.replace(/\/$/, "")}/sitemap.xml`;
@@ -111,7 +139,7 @@ async function fetchSitemap(baseUrl: string): Promise<string[]> {
 
 export async function crawlWebsite(url: string): Promise<CrawlResult> {
   const baseUrl = url.replace(/\/$/, "");
-  const result: CrawlResult = { favicon: null, pages: [], sitemapUrls: [] };
+  const result: CrawlResult = { favicon: null, pages: [], sitemapUrls: [], pageText: "", metaDescription: "" };
 
   const [htmlRes, sitemapUrls] = await Promise.all([
     fetch(baseUrl, {
@@ -131,6 +159,8 @@ export async function crawlWebsite(url: string): Promise<CrawlResult> {
     const html = await htmlRes.text();
     result.favicon = extractFavicon(html, baseUrl);
     result.pages = extractLinks(html, baseUrl);
+    result.pageText = extractPageText(html);
+    result.metaDescription = extractMetaDescription(html);
   }
 
   // Merge sitemap URLs into pages (deduplicated)
