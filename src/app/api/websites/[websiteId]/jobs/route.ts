@@ -22,6 +22,30 @@ export async function POST(
       return NextResponse.json({ success: true });
     }
 
+    // Cancel a running/queued job
+    if (body.action === "cancel" && body.jobId) {
+      const job = await prisma.generationJob.findFirst({
+        where: { id: body.jobId, websiteId, status: { in: ["QUEUED", "PROCESSING"] } },
+      });
+      if (!job) {
+        return NextResponse.json({ error: "Job not found or already finished" }, { status: 404 });
+      }
+
+      await prisma.generationJob.update({
+        where: { id: body.jobId },
+        data: { status: "FAILED", error: "Cancelled by user", completedAt: new Date() },
+      });
+
+      if (job.keywordId) {
+        await prisma.blogKeyword.update({
+          where: { id: job.keywordId },
+          data: { status: "PENDING", errorMessage: null },
+        }).catch(() => {});
+      }
+
+      return NextResponse.json({ success: true, message: "Job cancelled" });
+    }
+
     if (body.action !== "retry" || !body.jobId) {
       return NextResponse.json({ error: "Invalid action" }, { status: 400 });
     }

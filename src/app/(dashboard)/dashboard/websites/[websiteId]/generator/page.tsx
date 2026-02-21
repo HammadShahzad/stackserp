@@ -303,6 +303,24 @@ export default function GeneratorPage() {
     }
   };
 
+  const handleCancel = async (jobId: string) => {
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", jobId }),
+      });
+      if (res.ok) {
+        toast.success("Job cancelled");
+        fetchJobs();
+      } else {
+        toast.error("Failed to cancel job");
+      }
+    } catch {
+      toast.error("Failed to cancel job");
+    }
+  };
+
   const handleDismiss = async (jobId: string) => {
     setActiveJobs(prev => prev.filter(j => j.id !== jobId));
     await fetch(`/api/websites/${websiteId}/jobs`, {
@@ -502,7 +520,7 @@ export default function GeneratorPage() {
                 {runningJobs.length} active job{runningJobs.length > 1 ? "s" : ""}
               </h3>
               {runningJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} onCancel={handleCancel} />
               ))}
             </div>
           )}
@@ -515,7 +533,7 @@ export default function GeneratorPage() {
                 {completedJobs.length} completed
               </h3>
               {completedJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} onCancel={handleCancel} />
               ))}
             </div>
           )}
@@ -528,7 +546,7 @@ export default function GeneratorPage() {
                 {failedJobs.length} failed
               </h3>
               {failedJobs.map(job => (
-                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} />
+                <JobCard key={job.id} job={job} websiteId={websiteId} onRetry={handleRetry} onDismiss={handleDismiss} onCancel={handleCancel} />
               ))}
             </div>
           )}
@@ -890,11 +908,13 @@ function JobCard({
   websiteId,
   onRetry,
   onDismiss,
+  onCancel,
 }: {
   job: JobStatus;
   websiteId: string;
   onRetry?: (jobId: string) => void;
   onDismiss?: (jobId: string) => void;
+  onCancel?: (jobId: string) => void;
 }) {
   const isRunning = job.status === "QUEUED" || job.status === "PROCESSING";
   const isCompleted = job.status === "COMPLETED";
@@ -917,6 +937,16 @@ function JobCard({
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-2">
             <span className="text-sm font-medium tabular-nums">{job.progress}%</span>
+            {isRunning && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[11px] px-2 border-red-300 text-red-700 hover:bg-red-50"
+                onClick={() => onCancel?.(job.id)}
+              >
+                Cancel
+              </Button>
+            )}
             {!isRunning && (
               <button
                 onClick={() => onDismiss?.(job.id)}

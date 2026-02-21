@@ -8,7 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import {
   Loader2, CheckCircle2, XCircle, Search, FileText, Wand2,
   Sparkles, Image, Tags, Target, ArrowRight, ChevronDown, ChevronUp,
-  RefreshCw,
+  RefreshCw, Square,
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -48,6 +48,7 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
   const [retrying, setRetrying] = useState<Set<string>>(new Set());
+  const [cancelling, setCancelling] = useState<Set<string>>(new Set());
   const pollRef = useRef<NodeJS.Timeout | null>(null);
   const [hasJobs, setHasJobs] = useState(initialJobCount > 0);
   const { addJob, updateJob, removeJob } = useGlobalJobs();
@@ -132,6 +133,28 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
     }
   };
 
+  const handleCancel = async (jobId: string) => {
+    setCancelling(prev => new Set(prev).add(jobId));
+    try {
+      const res = await fetch(`/api/websites/${websiteId}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "cancel", jobId }),
+      });
+      if (res.ok) {
+        toast.success("Job cancelled");
+        removeJob(`content-${jobId}`);
+        fetchJobs();
+      } else {
+        toast.error("Failed to cancel job");
+      }
+    } catch {
+      toast.error("Failed to cancel job");
+    } finally {
+      setCancelling(prev => { const s = new Set(prev); s.delete(jobId); return s; });
+    }
+  };
+
   if (!hasJobs && jobs.length === 0) return null;
 
   const activeJobs = jobs.filter(j =>
@@ -202,7 +225,19 @@ export function ActiveJobsBanner({ websiteId, initialJobCount }: Props) {
                       Retry
                     </Button>
                   ) : (
-                    <span className="text-xs text-blue-700 font-medium">{job.progress}%</span>
+                    <>
+                      <span className="text-xs text-blue-700 font-medium">{job.progress}%</span>
+                      <Button size="sm" variant="outline"
+                        className="h-6 text-[11px] px-2 border-red-300 text-red-700 hover:bg-red-50"
+                        onClick={() => handleCancel(job.id)}
+                        disabled={cancelling.has(job.id)}
+                      >
+                        {cancelling.has(job.id)
+                          ? <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                          : <Square className="h-3 w-3 mr-1" />}
+                        Cancel
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
