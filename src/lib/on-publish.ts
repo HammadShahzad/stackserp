@@ -201,4 +201,19 @@ export async function runPublishHook({ postId, websiteId, triggeredBy = "manual"
   }
 
   await Promise.allSettled(tasks);
+
+  // Revalidate the public blog pages so the post appears immediately
+  try {
+    const appUrl = process.env.NEXTAUTH_URL || "https://stackserp.com";
+    const revalidateSecret = process.env.NEXTAUTH_SECRET || "";
+    // Only revalidate for StackSerp's own hosted blog
+    if (website.subdomain === "stackserp" || website.domain === "stackserp.com") {
+      await Promise.allSettled([
+        fetch(`${appUrl}/api/revalidate?path=/blogs&secret=${revalidateSecret}`),
+        fetch(`${appUrl}/api/revalidate?path=/blogs/${post.slug}&secret=${revalidateSecret}`),
+      ]);
+    }
+  } catch {
+    // Non-critical — ISR will catch up within the revalidate window
+  }
 }
