@@ -322,10 +322,12 @@ export function markdownToHtml(markdown: string): string {
     return `<h${depth} id="${id}">${cleanText}</h${depth}>\n`;
   };
 
-  renderer.table = (token: Parameters<marked.Renderer["table"]>[0]) => {
-    // Let marked render the table normally, then wrap in a scrollable div
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  renderer.table = (token: any) => {
+    // Render the table normally via a fresh renderer, then wrap for responsive scroll
     const defaultRenderer = new marked.Renderer();
-    const tableHtml = defaultRenderer.table(token);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tableHtml = (defaultRenderer as any).table(token);
     return `<div style="overflow-x:auto;margin:1.5em 0">${tableHtml}</div>\n`;
   };
 
