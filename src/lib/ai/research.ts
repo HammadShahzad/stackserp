@@ -6,7 +6,8 @@
 export interface ResearchResult {
   rawResearch: string;
   topRankingContent: string;
-  contentGaps: string[];
+  contentGaps: string[];       // Topics/questions competitors fail to cover
+  missingSubtopics: string[];  // Specific subtopics absent from top-ranking posts
   competitorHeadings: string[];
   keyStatistics: string[];
   relatedTopics: string[];
@@ -46,21 +47,32 @@ export async function researchKeyword(
     websiteContext.tone ? `Brand tone: ${websiteContext.tone}` : "",
   ].filter(Boolean).join("\n");
 
-  const prompt = `Research this topic thoroughly for an SEO blog post: "${keyword}".
+  const prompt = `Research this topic for an SEO blog post that will OUTRANK the current top results: "${keyword}".
 
 ${brandContext}
 
-Provide ALL of the following:
-1. Factual, up-to-date data, statistics, expert insights, and actionable information
-2. Specific numbers, prices, comparisons, and real-world examples — the more concrete the better
-3. What are the top 5 ranking articles for "${keyword}"? What do they cover? What structure and headings do they use?
-4. What content gaps exist that competitors miss? What questions do they fail to answer?
-5. What are the most common questions people ask about this topic (forums, Reddit, Quora, Google PAA)?
-6. Any relevant trends or recent changes in 2025-2026
-7. Key statistics and data points that would strengthen the article — cite sources where possible
-8. Related subtopics worth covering to be comprehensive
-9. UNIQUE ANGLE: What is a fresh, contrarian, or underexplored perspective on this topic that most articles don't take? What would make a reader say "I've never thought about it that way"?
-10. SPECIFIC EXAMPLES: Name real tools, companies, people, or case studies related to this topic that could be referenced in the article${websiteContext.competitors?.length ? `\n11. COMPETITOR ANALYSIS: How do ${websiteContext.competitors.join(", ")} cover this topic? What can we do better?` : ""}`;
+## PART 1 — COMPETITOR BLOG ANALYSIS (most important)
+Look at the top 5-7 ranking articles/blog posts for "${keyword}" right now.
+For each one:
+- What is the URL and headline?
+- What H2/H3 sections do they cover?
+- What do they get WRONG or oversimplify?
+- What subtopics, angles, or questions do they completely SKIP?
+
+## PART 2 — CONTENT GAP IDENTIFICATION
+Based on your analysis of the top-ranking content, list:
+- 5-8 specific subtopics or questions that NONE of the top articles cover well
+- 3-5 specific questions people ask (Reddit, Quora, Google PAA) that current articles ignore
+- Any outdated information in existing articles that we can update with 2025-2026 data
+
+## PART 3 — WINNING ANGLE
+What single, specific angle would make our article clearly better than everything that ranks now?
+Look for: contrarian takes, more specific use cases, more recent data, underserved audience segments, or topics competitors avoid because they're controversial or complex.
+
+## PART 4 — FACTUAL AMMUNITION
+- 5-8 statistics with sources (numbers, percentages, study citations)
+- 3-5 real-world examples, case studies, or named tools/companies to cite
+- Any expert quotes or studies from 2024-2026${websiteContext.competitors?.length ? `\n\n## PART 5 — NAMED COMPETITOR BLOGS\nSpecifically check how ${websiteContext.competitors.join(", ")} cover "${keyword}" on their own blogs.\nWhat do they write about it? What do they deliberately avoid? What angle can we take that beats them?` : ""}`;
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -100,13 +112,14 @@ Provide ALL of the following:
 
     return {
       rawResearch,
-      topRankingContent: rawResearch,
-      contentGaps: extractSection(rawResearch, "content gap", "miss", "fail"),
-      competitorHeadings: extractSection(rawResearch, "heading", "cover", "ranking", "structure"),
-      keyStatistics: extractSection(rawResearch, "statistic", "data", "number", "percent", "%"),
+      topRankingContent: extractSection(rawResearch, "competitor", "ranking", "top article", "part 1").join("\n") || rawResearch.substring(0, 1000),
+      contentGaps: extractSection(rawResearch, "content gap", "miss", "skip", "fail", "gap", "part 2"),
+      missingSubtopics: extractSection(rawResearch, "missing", "subtopic", "not covered", "ignore", "avoid", "nobody"),
+      competitorHeadings: extractSection(rawResearch, "heading", "h2", "h3", "section", "cover"),
+      keyStatistics: extractSection(rawResearch, "statistic", "data", "number", "percent", "%", "%", "study", "part 4"),
       relatedTopics: extractSection(rawResearch, "related", "subtopic", "also", "example"),
-      suggestedAngle: extractSection(rawResearch, "unique angle", "contrarian", "underexplored", "fresh perspective")[0] || "",
-      commonQuestions: extractSection(rawResearch, "question", "ask", "faq", "paa", "people also"),
+      suggestedAngle: extractSection(rawResearch, "winning angle", "unique angle", "contrarian", "underexplored", "part 3")[0] || "",
+      commonQuestions: extractSection(rawResearch, "question", "ask", "faq", "paa", "people also", "quora", "reddit"),
       rawResponse: rawResearch,
     };
   } catch (error) {
@@ -160,6 +173,11 @@ function getMockResearch(
       "Missing actionable tips for beginners",
       "No comparison of different approaches",
       "Outdated statistics and data",
+    ],
+    missingSubtopics: [
+      `How ${keyword} specifically applies to ${ctx.targetAudience}`,
+      `Common mistakes that experts make (not just beginners)`,
+      `Cost/ROI breakdown that most guides skip`,
     ],
     competitorHeadings: [
       `What is ${keyword}?`,

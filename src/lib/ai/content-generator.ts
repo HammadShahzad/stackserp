@@ -10,7 +10,14 @@ import { researchKeyword, ResearchResult } from "./research";
 import { generateBlogImage, generateInlineImage } from "../storage/image-generator";
 import type { Website, BlogSettings } from "@prisma/client";
 
-type WebsiteWithSettings = Website & { blogSettings?: BlogSettings | null };
+type WebsiteWithSettings = Website & {
+  blogSettings?: BlogSettings | null;
+  // Brand Intelligence fields (added in migration 20260221000003)
+  uniqueValueProp?: string | null;
+  competitors?: string[];
+  keyProducts?: string[];
+  targetLocation?: string | null;
+};
 
 export interface WebsiteContext {
   id: string;
@@ -269,38 +276,40 @@ export async function generateBlogPost(
   }>(
     `Create a detailed blog post outline for the keyword: "${keyword}"
 
-Context:
+## Brand Context
 - Brand: ${ctx.brandName} (${ctx.niche})
 - Target audience: ${ctx.targetAudience}
 - Target word count: ${targetWords} words
 ${ctx.targetLocation ? `- Geographic focus: ${ctx.targetLocation}` : ""}
-${ctx.competitors?.length ? `- Competitors to outrank: ${ctx.competitors.join(", ")}` : ""}
 ${ctx.uniqueValueProp ? `- ${ctx.brandName}'s USP: ${ctx.uniqueValueProp}` : ""}
 ${ctx.keyProducts?.length ? `- Products/features to reference: ${ctx.keyProducts.join(", ")}` : ""}
 
-Research findings:
-${research.rawResearch.substring(0, 3000)}
+## What Competitors Are MISSING (these gaps MUST become dedicated sections or deep sub-points)
+${research.contentGaps.length ? research.contentGaps.slice(0, 6).map((g, i) => `${i + 1}. ${g}`).join("\n") : "- Cover more specific, actionable advice than generic guides"}
+${research.missingSubtopics?.length ? "\nMissing subtopics no current article covers:\n" + research.missingSubtopics.slice(0, 4).map((s) => `- ${s}`).join("\n") : ""}
 
-Content gaps to exploit (what competitors miss):
-- ${research.contentGaps.slice(0, 5).join("\n- ")}
+## Winning Angle (what makes this article beat everything ranking now)
+${research.suggestedAngle || "Take a more specific, practitioner-level perspective than generic overviews"}
 
-Common questions people ask:
-- ${research.commonQuestions.slice(0, 5).join("\n- ")}
+## Questions People Ask That Current Articles Ignore
+${research.commonQuestions.slice(0, 5).map((q) => `- ${q}`).join("\n")}
 
-Key statistics to use:
-- ${research.keyStatistics.slice(0, 4).join("\n- ")}
+## Key Statistics to Use
+${research.keyStatistics.slice(0, 4).map((s) => `- ${s}`).join("\n")}
 
-${research.suggestedAngle ? `Unique angle discovered in research (use this to differentiate the article):\n"${research.suggestedAngle}"` : ""}
+## Research Summary
+${research.rawResearch.substring(0, 2500)}
 
-Create an outline with:
-- A compelling, SEO-optimized H1 title (include the keyword naturally, 50-70 chars) — reflect the unique angle if strong
-- 5-7 H2 sections with 3-4 bullet points each — vary the section types (how-to, comparison, case study, data breakdown)
-- Cover everything top competitors cover PLUS the content gaps identified above
-${includeFAQ ? "- A FAQ section with 4-5 of the most commonly searched questions" : ""}
-- A "Key Takeaways" section near the top
-${ctx.requiredSections?.length ? `- MUST include these specific sections: ${ctx.requiredSections.join(", ")}` : ""}
-- A strong conclusion with CTA for ${ctx.brandName}${ctx.uniqueValueProp ? ` highlighting: "${ctx.uniqueValueProp}"` : ""}
-- In the "uniqueAngle" field: write the specific contrarian/fresh angle this article should take vs. the typical treatment of this topic
+## Outline Rules
+- H1 title: SEO-optimized (50-70 chars), includes keyword, reflects the winning angle
+- 5-7 H2 sections — at least 2 of them must directly address the identified content gaps above
+- Each section: 3-4 bullet points showing exactly what will be covered
+- Vary section types: how-to, comparison table, case study, data breakdown, common mistakes
+- Include a "Key Takeaways" box near the top
+${includeFAQ ? "- Include a FAQ section answering the questions competitors' articles ignore" : ""}
+${ctx.requiredSections?.length ? `- MUST include these sections: ${ctx.requiredSections.join(", ")}` : ""}
+- Conclusion: CTA for ${ctx.brandName}${ctx.uniqueValueProp ? ` built around: "${ctx.uniqueValueProp}"` : ""}
+- "uniqueAngle" field: the specific take that makes this article clearly better than the top 5 results
 
 Return JSON: { "title": "...", "sections": [{ "heading": "...", "points": ["..."] }], "uniqueAngle": "..." }`,
     systemPrompt
@@ -321,8 +330,12 @@ ${ctx.competitors?.length ? `Context: ${ctx.brandName} competes with ${ctx.compe
 Outline to follow:
 ${outline.sections.map((s) => `## ${s.heading}\n${s.points.map((p) => `- ${p}`).join("\n")}`).join("\n\n")}
 
-Research data to incorporate:
-${research.rawResearch.substring(0, 4000)}
+## Content Gaps to Fill (what competitors miss — cover these thoroughly)
+${research.contentGaps.slice(0, 5).map((g, i) => `${i + 1}. ${g}`).join("\n")}
+${research.missingSubtopics?.length ? "\nMissing subtopics that will make this article stand out:\n" + research.missingSubtopics.slice(0, 3).map((s) => `- ${s}`).join("\n") : ""}
+
+## Research Data
+${research.rawResearch.substring(0, 3500)}
 
 ## Writing Guidelines:
 
