@@ -61,12 +61,21 @@ function saveToStorage(jobs: GlobalJob[]) {
 const GlobalJobsContext = createContext<GlobalJobsContextValue | null>(null);
 
 export function GlobalJobsProvider({ children }: { children: ReactNode }) {
-  const [jobs, setJobs] = useState<GlobalJob[]>(loadFromStorage);
+  const [jobs, setJobs] = useState<GlobalJob[]>([]);
+  const hydratedRef = useRef(false);
   const jobsRef = useRef(jobs);
   jobsRef.current = jobs;
 
-  // Persist to sessionStorage on every change
+  // Hydrate from sessionStorage AFTER first client render (avoids SSR mismatch)
   useEffect(() => {
+    const stored = loadFromStorage();
+    if (stored.length) setJobs(stored);
+    hydratedRef.current = true;
+  }, []);
+
+  // Persist to sessionStorage on every change (skip the initial empty write before hydration)
+  useEffect(() => {
+    if (!hydratedRef.current) return;
     saveToStorage(jobs);
   }, [jobs]);
 

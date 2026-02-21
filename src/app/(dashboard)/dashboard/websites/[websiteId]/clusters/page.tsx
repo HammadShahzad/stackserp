@@ -192,6 +192,8 @@ export default function ClustersPage() {
   const [isAdding, setIsAdding] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [clusterKeywordSelection, setClusterKeywordSelection] = useState<Record<string, Set<string>>>({});
+  const [addingToQueueId, setAddingToQueueId] = useState<string | null>(null);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [suggestions, setSuggestions] = useState<SuggestedCluster[]>([]);
   const [stepStatus, setStepStatus] = useState<StepStatus | null>(null);
@@ -387,17 +389,40 @@ export default function ClustersPage() {
     }
   };
 
+  const toggleClusterKeyword = (clusterId: string, kw: string) => {
+    setClusterKeywordSelection((prev) => {
+      const current = new Set(prev[clusterId] ?? []);
+      if (current.has(kw)) current.delete(kw); else current.add(kw);
+      return { ...prev, [clusterId]: current };
+    });
+  };
+
+  const toggleAllClusterKeywords = (cluster: TopicCluster) => {
+    const allKws = [cluster.pillarKeyword, ...cluster.supportingKeywords];
+    const current = clusterKeywordSelection[cluster.id];
+    const allSelected = current && allKws.every((kw) => current.has(kw));
+    setClusterKeywordSelection((prev) => ({
+      ...prev,
+      [cluster.id]: allSelected ? new Set() : new Set(allKws),
+    }));
+  };
+
   const handleAddToQueue = async (cluster: TopicCluster) => {
-    const allKeywords = [cluster.pillarKeyword, ...cluster.supportingKeywords];
+    const selection = clusterKeywordSelection[cluster.id];
+    const toAdd = selection && selection.size > 0
+      ? Array.from(selection)
+      : [cluster.pillarKeyword, ...cluster.supportingKeywords];
+
+    setAddingToQueueId(cluster.id);
     try {
-      const res = await fetch(`/api/websites/${websiteId}/keywords`, {
+      const res = await fetch(`/api/websites/${websiteId}/keywords/import`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keywords: allKeywords }),
+        body: JSON.stringify({ keywords: toAdd }),
       });
+      const data = await res.json();
       if (res.ok) {
-        toast.success(`Added ${allKeywords.length} keywords to queue`);
-        // Update cluster status
+        toast.success(`Added ${data.imported} keyword${data.imported !== 1 ? "s" : ""} to queue${data.skipped ? ` (${data.skipped} already existed)` : ""}`);
         await fetch(`/api/websites/${websiteId}/clusters`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -406,11 +431,15 @@ export default function ClustersPage() {
         setClusters((prev) =>
           prev.map((c) => (c.id === cluster.id ? { ...c, status: "IN_PROGRESS" } : c))
         );
+        // Clear selection after adding
+        setClusterKeywordSelection((prev) => ({ ...prev, [cluster.id]: new Set() }));
       } else {
-        toast.error("Failed to add keywords");
+        toast.error(data.error || "Failed to add keywords");
       }
     } catch {
       toast.error("Something went wrong");
+    } finally {
+      setAddingToQueueId(null);
     }
   };
 
@@ -717,22 +746,56 @@ export default function ClustersPage() {
               {expandedId === cluster.id && (
                 <CardContent className="pt-0 pb-4">
                   <div className="pl-12">
-                    <p className="text-xs font-medium text-muted-foreground mb-2">
-                      Supporting Keywords ({cluster.supportingKeywords.length})
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {cluster.supportingKeywords.map((kw) => (
-                        <Badge key={kw} variant="secondary" className="text-xs">{kw}</Badge>
-                      ))}
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        Keywords ({1 + cluster.supportingKeywords.length})
+                      </p>
+                      <button
+                        className="text-xs text-primary hover:underline"
+                        onClick={() => toggleAllClusterKeywords(cluster)}
+                      >
+                        {(() => {
+                          const allKws = [cluster.pillarKeyword, ...cluster.supportingKeywords];
+                          const sel = clusterKeywordSelection[cluster.id];
+                          return sel && allKws.every((kw) => sel.has(kw)) ? "Deselect All" : "Select All";
+                        })()}
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {[cluster.pillarKeyword, ...cluster.supportingKeywords].map((kw) => {
+                        const checked = clusterKeywordSelection[cluster.id]?.has(kw) ?? false;
+                        return (
+                          <label key={kw} className="flex items-center gap-2 cursor-pointer group">
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleClusterKeyword(cluster.id, kw)}
+                              className="shrink-0"
+                            />
+                            <span className={`text-sm ${kw === cluster.pillarKeyword ? "font-medium" : ""}`}>
+                              {kw}
+                              {kw === cluster.pillarKeyword && (
+                                <Badge variant="outline" className="ml-2 text-[10px] px-1 py-0 h-4">pillar</Badge>
+                              )}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                     <Button
                       variant="outline"
                       size="sm"
                       className="mt-4 gap-1.5"
+                      disabled={addingToQueueId === cluster.id}
                       onClick={() => handleAddToQueue(cluster)}
                     >
-                      <Plus className="h-3.5 w-3.5" />
-                      Add All to Keyword Queue
+                      {addingToQueueId === cluster.id
+                        ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        : <Plus className="h-3.5 w-3.5" />}
+                      {(() => {
+                        const sel = clusterKeywordSelection[cluster.id];
+                        const count = sel && sel.size > 0 ? sel.size : 1 + cluster.supportingKeywords.length;
+                        return `Add ${count} to Keyword Queue`;
+                      })()}
                     </Button>
                   </div>
                 </CardContent>

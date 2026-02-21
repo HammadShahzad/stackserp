@@ -271,6 +271,7 @@ ${research.rawResearch.substring(0, 4000)}
 11. Write in Markdown format
 12. Make it SEO-friendly by naturally incorporating the keyword and related terms
 13. Cover everything competitors cover PLUS the content gaps identified in research
+19. CRITICAL READABILITY RULE: Keep every paragraph to 3-4 sentences MAX (under 80 words). Break long paragraphs into shorter ones. Use blank lines between paragraphs. Readers skim, so shorter blocks are always better.
 ${includeFAQ ? "14. Include a FAQ section near the end with 4-5 common questions and detailed answers" : ""}
 15. Write from an EXPERT PERSPECTIVE — use phrases like "In my testing," "I've found that," "From my experience," "What I noticed is" to share first-hand insights
 16. Add 2-3 "Pro Tip:" callouts per section that share insider knowledge only an expert would know
@@ -303,6 +304,7 @@ Rewrite the following blog post for ${ctx.brandName} to be more engaging, conver
 - NEVER use the em-dash character. Use commas or periods instead.
 - AVOID starting sentences with "So," or "Well,"
 - AVOID formal transitions like "Furthermore," "Moreover," "Additionally" - use natural ones instead
+- READABILITY: Keep every paragraph to 3-4 sentences max (under 80 words). Break any long paragraph into shorter ones. Short paragraphs are easier to scan.
 
 ## Blog Post:
 ${draft}
@@ -358,7 +360,7 @@ Output ONLY the rewritten blog post in Markdown format. Preserve all headings an
    - Do NOT use placeholder formats like [INTERNAL_LINK: text]. Use real markdown links only.
 6. Make sure the intro paragraph contains the keyword
 ${includeFAQ ? `7. Ensure there's a FAQ section at the end with 4-5 common questions (format as proper ## FAQ heading with ### for each question — this helps with Google's FAQ rich snippets)` : "7. Skip FAQ if not present"}
-8. Ensure paragraphs are scannable (3-4 sentences max)
+8. CRITICAL: Every paragraph MUST be under 80 words (3-4 sentences max). Split any longer paragraph into two. This is a hard requirement for readability scoring.
 9. DO NOT stuff keywords — keep it natural
 10. Preserve the humor and conversational tone, do not make it robotic
 11a. REMOVE any remaining AI phrases: "delve," "dive deep," "game-changer," "leverage," "utilize," "tapestry," "realm," "robust," "cutting-edge," "embark," "navigate the complexities," "unlock the power"
@@ -403,6 +405,23 @@ Output ONLY the optimized blog post in Markdown format.`,
       return fullMatch;
     }
   );
+
+  // Post-process: break overly long paragraphs (>80 words) for readability
+  finalContent = finalContent
+    .split("\n\n")
+    .flatMap((block) => {
+      const trimmed = block.trim();
+      // Skip headings, lists, images, code blocks, tables
+      if (/^(#{1,6}\s|[-*]\s|\d+\.\s|!\[|```|<|\|)/.test(trimmed)) return [block];
+      const words = trimmed.split(/\s+/);
+      if (words.length <= 80) return [block];
+      // Split at the sentence boundary closest to the midpoint
+      const sentences = trimmed.match(/[^.!?]+[.!?]+/g);
+      if (!sentences || sentences.length < 2) return [block];
+      const mid = Math.ceil(sentences.length / 2);
+      return [sentences.slice(0, mid).join("").trim(), sentences.slice(mid).join("").trim()];
+    })
+    .join("\n\n");
 
   // ─── STEP 6: METADATA ────────────────────────────────────────────
   await progress("metadata", "Generating SEO metadata, schema, and social captions...");
@@ -510,61 +529,48 @@ Return JSON:
         "You are a creative director specializing in content marketing visuals. Return valid JSON only."
       );
 
-      // Generate all images in parallel
-      const imageJobs: Promise<{ type: "featured" | "inline"; url: string; alt: string; sectionIndex?: number }>[] = [];
+      // Generate images one at a time to avoid API rate limits
 
-      // Featured image
-      imageJobs.push(
-        generateBlogImage(
+      // 1. Featured image first
+      try {
+        const featUrl = await generateBlogImage(
           imagePrompts.featured,
           `${postSlug}-featured`,
           website.id,
           outline.title
-        ).then((url) => ({ type: "featured" as const, url, alt: imagePrompts.featuredAlt || keyword }))
-      );
+        );
+        featuredImageUrl = featUrl;
+        featuredImageAlt = imagePrompts.featuredAlt || keyword;
+      } catch (imgErr) {
+        console.error("Featured image generation failed:", imgErr);
+      }
 
-      // Inline images
+      // 2. Inline images one by one
       for (let i = 0; i < (imagePrompts.sections || []).length; i++) {
         const sec = imagePrompts.sections[i];
         if (!sec?.prompt || sec.sectionIndex < 1 || sec.sectionIndex > h2Sections.length) continue;
-        imageJobs.push(
-          generateInlineImage(
+
+        try {
+          const inlineUrl = await generateInlineImage(
             sec.prompt,
             postSlug,
             i,
             website.id
-          ).then((url) => ({ type: "inline" as const, url, alt: sec.alt || keyword, sectionIndex: sec.sectionIndex }))
-        );
-      }
-
-      const imageResults = await Promise.allSettled(imageJobs);
-
-      // Process results
-      for (const result of imageResults) {
-        if (result.status !== "fulfilled") continue;
-        const img = result.value;
-
-        if (img.type === "featured") {
-          featuredImageUrl = img.url;
-          featuredImageAlt = img.alt;
-        } else if (img.type === "inline" && img.sectionIndex != null) {
-          // Insert inline image after the H2 heading of the relevant section
-          const sectionIdx = img.sectionIndex - 1;
+          );
+          const alt = sec.alt || keyword;
+          const sectionIdx = sec.sectionIndex - 1;
           if (sectionIdx >= 0 && sectionIdx < h2Sections.length) {
             const heading = h2Sections[sectionIdx].heading;
             const h2Pattern = `## ${heading}`;
             const h2Pos = finalContent.indexOf(h2Pattern);
             if (h2Pos !== -1) {
-              // Find end of the heading line
               const lineEnd = finalContent.indexOf("\n", h2Pos);
               if (lineEnd !== -1) {
-                // Find end of the first paragraph after the heading
                 const nextDoubleNewline = finalContent.indexOf("\n\n", lineEnd + 1);
                 const insertPos = nextDoubleNewline !== -1 ? nextDoubleNewline : lineEnd;
-                const imgMarkdown = `\n\n![${img.alt}](${img.url})\n`;
+                const imgMarkdown = `\n\n![${alt}](${inlineUrl})\n`;
                 finalContent = finalContent.slice(0, insertPos) + imgMarkdown + finalContent.slice(insertPos);
 
-                // Update h2Sections offsets after insertion
                 const shift = imgMarkdown.length;
                 for (let j = sectionIdx + 1; j < h2Sections.length; j++) {
                   h2Sections[j].startIdx += shift;
@@ -572,6 +578,8 @@ Return JSON:
               }
             }
           }
+        } catch (imgErr) {
+          console.error(`Inline image ${i} generation failed:`, imgErr);
         }
       }
     } catch (err) {
