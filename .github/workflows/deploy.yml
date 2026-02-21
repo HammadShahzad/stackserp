@@ -31,7 +31,7 @@ jobs:
       - name: Generate Prisma client
         run: npx prisma generate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: "postgresql://build:build@localhost/build"
 
       - name: Build Next.js (standalone)
         run: npm run build
@@ -62,11 +62,6 @@ jobs:
           mkdir -p ~/.ssh
           ssh-keyscan -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Sync DB schema (add missing columns/tables)
-        run: npx prisma db push --accept-data-loss --skip-generate
-        env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
-
       - name: Sync standalone build to droplet
         env:
           DEPLOY_PASS: ${{ secrets.DROPLET_PASSWORD }}
@@ -76,6 +71,14 @@ jobs:
           rsync -avz --delete -e "$R" .next/static/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/.next/static/
           rsync -avz --delete -e "$R" public/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/public/
           rsync -avz -e "$R" ecosystem.config.js worker.js package.json prisma/ ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+
+      - name: Sync DB schema on droplet
+        env:
+          DEPLOY_PASS: ${{ secrets.DROPLET_PASSWORD }}
+        run: |
+          sshpass -p "$DEPLOY_PASS" ssh -o StrictHostKeyChecking=no \
+            ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} \
+            "cd ${{ env.DEPLOY_PATH }} && (test -f .env && export \$(grep -v '^#' .env | xargs) || true) && node .next/standalone/node_modules/.bin/prisma db push --accept-data-loss --skip-generate --schema prisma/schema.prisma 2>&1"
 
       - name: Reload PM2 app
         env:
