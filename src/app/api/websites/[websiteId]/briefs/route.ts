@@ -64,7 +64,11 @@ export async function POST(req: Request, { params }: Params) {
 
   const website = await prisma.website.findUnique({
     where: { id: websiteId },
-    select: { niche: true, brandName: true, targetAudience: true },
+    select: {
+      niche: true, brandName: true, targetAudience: true,
+      description: true, uniqueValueProp: true, competitors: true,
+      keyProducts: true, targetLocation: true, tone: true,
+    },
   });
   if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
 
@@ -80,10 +84,20 @@ export async function POST(req: Request, { params }: Params) {
     competitorUrls: string[];
   }
 
+  const extraContext = [
+    website.description ? `Business: ${website.description}` : "",
+    website.uniqueValueProp ? `USP: ${website.uniqueValueProp}` : "",
+    website.competitors?.length ? `Competitors: ${website.competitors.join(", ")}` : "",
+    website.keyProducts?.length ? `Products: ${website.keyProducts.join(", ")}` : "",
+    website.targetLocation ? `Market: ${website.targetLocation}` : "",
+    website.tone ? `Tone: ${website.tone}` : "",
+  ].filter(Boolean).join("\n");
+
   const briefData = await generateJSON<BriefData>(
     `Create a detailed content brief for the keyword "${keyword}" for ${website.brandName} (${website.niche}).
 
 Target audience: ${website.targetAudience}
+${extraContext}
 
 Research context:
 - Top ranking content: ${research.topRankingContent}
@@ -95,7 +109,7 @@ Generate a content brief with:
 2. Detailed outline with H2 sections (5-8) and key points for each
 3. Suggested word count (1500-4000)
 4. Content gaps to address
-5. Unique angle/perspective
+5. Unique angle/perspective that leverages ${website.brandName}'s unique positioning
 6. Recommended H2/H3 headings
 7. Competitor URLs analyzed (list 3-5 placeholder URLs)
 

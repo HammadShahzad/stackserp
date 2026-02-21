@@ -217,34 +217,38 @@ export default function WebsiteSettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState("");
 
-  // AI preview dialog state
-  interface AIPreview {
-    brandName: string; brandUrl: string; primaryColor: string;
-    niche: string; description: string; targetAudience: string; tone: string;
-    uniqueValueProp: string; competitors: string[]; keyProducts: string[];
-    targetLocation: string; suggestedCtaText: string; suggestedCtaUrl: string;
-    suggestedWritingStyle: string;
+  // AI preview dialog — multi-option
+  interface AIRawData {
+    brandName: string; brandUrl: string; primaryColor: string[];
+    niche: string[]; description: string[]; targetAudience: string[]; tone: string[];
+    uniqueValueProp: string[]; competitors: string[]; keyProducts: string[];
+    targetLocation: string; suggestedCtaText: string[]; suggestedCtaUrl: string;
+    suggestedWritingStyle: string[];
   }
-  const [aiPreview, setAiPreview] = useState<AIPreview | null>(null);
+  const [aiRaw, setAiRaw] = useState<AIRawData | null>(null);
   const [aiDialogOpen, setAiDialogOpen] = useState(false);
-  const [aiToggles, setAiToggles] = useState<Record<string, boolean>>({});
+  // Selected index per field (which option the user picked)
+  const [aiPicks, setAiPicks] = useState<Record<string, number>>({});
+  // Whether to apply each field
+  const [aiEnabled, setAiEnabled] = useState<Record<string, boolean>>({});
 
-  const AI_FIELDS: { key: keyof AIPreview; label: string; group: string }[] = [
-    { key: "niche", label: "Niche", group: "General" },
+  const MULTI_FIELDS = [
+    { key: "niche", label: "Niche / Industry", group: "General" },
     { key: "description", label: "Description", group: "General" },
     { key: "targetAudience", label: "Target Audience", group: "General" },
-    { key: "brandName", label: "Brand Name", group: "Brand" },
-    { key: "brandUrl", label: "Brand URL", group: "Brand" },
     { key: "tone", label: "Writing Tone", group: "Brand" },
     { key: "primaryColor", label: "Brand Color", group: "Brand" },
     { key: "uniqueValueProp", label: "Value Proposition", group: "Brand" },
-    { key: "targetLocation", label: "Location", group: "Brand" },
-    { key: "competitors", label: "Competitors", group: "Brand" },
-    { key: "keyProducts", label: "Products/Features", group: "Brand" },
-    { key: "suggestedCtaText", label: "CTA Text", group: "Content" },
-    { key: "suggestedCtaUrl", label: "CTA URL", group: "Content" },
+    { key: "suggestedCtaText", label: "Call-to-Action", group: "Content" },
     { key: "suggestedWritingStyle", label: "Writing Style", group: "Content" },
-  ];
+  ] as const;
+
+  const SINGLE_FIELDS = [
+    { key: "brandName", label: "Brand Name", group: "Brand" },
+    { key: "brandUrl", label: "Brand URL", group: "Brand" },
+    { key: "targetLocation", label: "Location", group: "Brand" },
+    { key: "suggestedCtaUrl", label: "CTA URL", group: "Content" },
+  ] as const;
 
   const handleAIResearch = async () => {
     if (!website) return;
@@ -260,14 +264,16 @@ export default function WebsiteSettingsPage() {
         toast.error(err.error || "AI analysis failed");
         return;
       }
-      const data = await res.json() as AIPreview;
-      setAiPreview(data);
-      const defaults: Record<string, boolean> = {};
-      for (const f of AI_FIELDS) {
-        const val = data[f.key];
-        defaults[f.key] = Array.isArray(val) ? val.length > 0 : !!val;
-      }
-      setAiToggles(defaults);
+      const data = await res.json() as AIRawData;
+      setAiRaw(data);
+      const picks: Record<string, number> = {};
+      const enabled: Record<string, boolean> = {};
+      for (const f of MULTI_FIELDS) { picks[f.key] = 0; enabled[f.key] = true; }
+      for (const f of SINGLE_FIELDS) { enabled[f.key] = true; }
+      enabled["competitors"] = true;
+      enabled["keyProducts"] = true;
+      setAiPicks(picks);
+      setAiEnabled(enabled);
       setAiDialogOpen(true);
     } catch {
       toast.error("AI analysis failed");
@@ -276,29 +282,37 @@ export default function WebsiteSettingsPage() {
     }
   };
 
-  const handleAIApply = () => {
-    if (!aiPreview) return;
-    let applied = 0;
+  const getPickedValue = (key: string): string => {
+    if (!aiRaw) return "";
+    const raw = (aiRaw as unknown as Record<string, unknown>)[key];
+    if (Array.isArray(raw)) return raw[aiPicks[key] ?? 0] || raw[0] || "";
+    return String(raw || "");
+  };
 
-    if (aiToggles.niche && aiPreview.niche) { updateField("niche", aiPreview.niche); applied++; }
-    if (aiToggles.description && aiPreview.description) { updateField("description", aiPreview.description); applied++; }
-    if (aiToggles.targetAudience && aiPreview.targetAudience) { updateField("targetAudience", aiPreview.targetAudience); applied++; }
-    if (aiToggles.brandName && aiPreview.brandName) { updateField("brandName", aiPreview.brandName); applied++; }
-    if (aiToggles.brandUrl && aiPreview.brandUrl) { updateField("brandUrl", aiPreview.brandUrl); applied++; }
-    if (aiToggles.tone && aiPreview.tone) { updateField("tone", aiPreview.tone); applied++; }
-    if (aiToggles.primaryColor && aiPreview.primaryColor) { updateField("primaryColor", aiPreview.primaryColor); applied++; }
-    if (aiToggles.uniqueValueProp && aiPreview.uniqueValueProp) { updateField("uniqueValueProp", aiPreview.uniqueValueProp); applied++; }
-    if (aiToggles.targetLocation && aiPreview.targetLocation) { updateField("targetLocation", aiPreview.targetLocation); applied++; }
-    if (aiToggles.competitors && aiPreview.competitors?.length) { updateField("competitors", aiPreview.competitors); applied++; }
-    if (aiToggles.keyProducts && aiPreview.keyProducts?.length) { updateField("keyProducts", aiPreview.keyProducts); applied++; }
-    if (aiToggles.suggestedCtaText && aiPreview.suggestedCtaText) {
-      setBlogSettings((p) => ({ ...p, ctaText: aiPreview.suggestedCtaText })); applied++;
+  const handleAIApply = () => {
+    if (!aiRaw) return;
+    let applied = 0;
+    const pick = (k: string) => getPickedValue(k);
+
+    if (aiEnabled.niche) { updateField("niche", pick("niche")); applied++; }
+    if (aiEnabled.description) { updateField("description", pick("description")); applied++; }
+    if (aiEnabled.targetAudience) { updateField("targetAudience", pick("targetAudience")); applied++; }
+    if (aiEnabled.brandName) { updateField("brandName", aiRaw.brandName); applied++; }
+    if (aiEnabled.brandUrl) { updateField("brandUrl", aiRaw.brandUrl); applied++; }
+    if (aiEnabled.tone) { updateField("tone", pick("tone")); applied++; }
+    if (aiEnabled.primaryColor) { updateField("primaryColor", pick("primaryColor")); applied++; }
+    if (aiEnabled.uniqueValueProp) { updateField("uniqueValueProp", pick("uniqueValueProp")); applied++; }
+    if (aiEnabled.targetLocation) { updateField("targetLocation", aiRaw.targetLocation); applied++; }
+    if (aiEnabled.competitors && aiRaw.competitors?.length) { updateField("competitors", aiRaw.competitors); applied++; }
+    if (aiEnabled.keyProducts && aiRaw.keyProducts?.length) { updateField("keyProducts", aiRaw.keyProducts); applied++; }
+    if (aiEnabled.suggestedCtaText) {
+      setBlogSettings((p) => ({ ...p, ctaText: pick("suggestedCtaText") })); applied++;
     }
-    if (aiToggles.suggestedCtaUrl && aiPreview.suggestedCtaUrl) {
-      setBlogSettings((p) => ({ ...p, ctaUrl: aiPreview.suggestedCtaUrl })); applied++;
+    if (aiEnabled.suggestedCtaUrl) {
+      setBlogSettings((p) => ({ ...p, ctaUrl: aiRaw.suggestedCtaUrl })); applied++;
     }
-    if (aiToggles.suggestedWritingStyle && aiPreview.suggestedWritingStyle) {
-      const style = aiPreview.suggestedWritingStyle;
+    if (aiEnabled.suggestedWritingStyle) {
+      const style = pick("suggestedWritingStyle");
       if (["informative", "conversational", "technical", "storytelling", "persuasive", "humorous"].includes(style)) {
         setBlogSettings((p) => ({ ...p, writingStyle: style })); applied++;
       }
@@ -998,7 +1012,7 @@ export default function WebsiteSettingsPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="advanced" className="mt-0">
+          <TabsContent value="advanced" className="mt-0 space-y-4">
             <Card>
               <CardContent className="space-y-4 pt-6">
                 <div className="grid gap-4 md:grid-cols-2">
@@ -1017,48 +1031,47 @@ export default function WebsiteSettingsPage() {
                 </div>
               </CardContent>
             </Card>
+
+            <Card className="border-destructive/50">
+              <CardHeader>
+                <CardTitle className="text-destructive flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5" />
+                  Danger Zone
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Pause Website</p>
+                    <p className="text-sm text-muted-foreground">Stop all content generation</p>
+                  </div>
+                  <Button variant="outline" onClick={handlePause} disabled={isPausing}>
+                    {isPausing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    {website.status === "PAUSED" ? "Resume" : "Pause"}
+                  </Button>
+                </div>
+                <Separator />
+                <div className="space-y-3">
+                  <p className="font-medium">Delete Website</p>
+                  <p className="text-sm text-muted-foreground">Permanently delete this website and all its content</p>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      Type <span className="font-mono font-semibold text-foreground">{website.domain}</span> to confirm:
+                    </p>
+                    <div className="flex gap-2">
+                      <Input placeholder={website.domain} value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} className="max-w-xs" />
+                      <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || confirmDelete !== website.domain}>
+                        {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Delete Forever
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* ── DANGER ZONE ─────────────────────────────────── */}
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle className="text-destructive flex items-center gap-2">
-            <AlertTriangle className="h-5 w-5" />
-            Danger Zone
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Pause Website</p>
-              <p className="text-sm text-muted-foreground">Stop all content generation</p>
-            </div>
-            <Button variant="outline" onClick={handlePause} disabled={isPausing}>
-              {isPausing && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              {website.status === "PAUSED" ? "Resume" : "Pause"}
-            </Button>
-          </div>
-          <Separator />
-          <div className="space-y-3">
-            <p className="font-medium">Delete Website</p>
-            <p className="text-sm text-muted-foreground">Permanently delete this website and all its content</p>
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Type <span className="font-mono font-semibold text-foreground">{website.domain}</span> to confirm:
-              </p>
-              <div className="flex gap-2">
-                <Input placeholder={website.domain} value={confirmDelete} onChange={(e) => setConfirmDelete(e.target.value)} className="max-w-xs" />
-                <Button variant="destructive" onClick={handleDelete} disabled={isDeleting || confirmDelete !== website.domain}>
-                  {isDeleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Delete Forever
-                </Button>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
 
       {/* ── AI PREVIEW DIALOG ───────────────────────────── */}
       <Dialog open={aiDialogOpen} onOpenChange={setAiDialogOpen}>
@@ -1069,94 +1082,111 @@ export default function WebsiteSettingsPage() {
               AI Research Results
             </DialogTitle>
             <DialogDescription>
-              We researched <span className="font-medium text-foreground">{website.domain}</span>. Toggle which fields to apply, edit any value, then hit Apply.
+              Pick your preferred option for each field. Click an option to select it, toggle the switch to skip a field.
             </DialogDescription>
           </DialogHeader>
 
-          {aiPreview && (
-            <div className="space-y-4 py-2">
+          {aiRaw && (
+            <div className="space-y-5 py-2">
               {["General", "Brand", "Content"].map((group) => (
                 <div key={group}>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{group}</p>
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline"
-                      onClick={() => {
-                        const groupFields = AI_FIELDS.filter((f) => f.group === group);
-                        const allOn = groupFields.every((f) => aiToggles[f.key]);
-                        setAiToggles((prev) => {
-                          const next = { ...prev };
-                          for (const f of groupFields) next[f.key] = !allOn;
-                          return next;
-                        });
-                      }}
-                    >
-                      Toggle all
-                    </button>
-                  </div>
-                  <div className="space-y-2">
-                    {AI_FIELDS.filter((f) => f.group === group).map((field) => {
-                      const val = aiPreview[field.key];
-                      const display = Array.isArray(val) ? val.join(", ") : String(val || "");
-                      if (!display) return null;
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">{group}</p>
+                  <div className="space-y-3">
+                    {/* Multi-option fields */}
+                    {MULTI_FIELDS.filter((f) => f.group === group).map((field) => {
+                      const options = (aiRaw as unknown as Record<string, unknown>)[field.key];
+                      if (!Array.isArray(options) || options.length === 0) return null;
+                      const selected = aiPicks[field.key] ?? 0;
+                      const enabled = aiEnabled[field.key] !== false;
+
                       return (
-                        <div key={field.key} className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${aiToggles[field.key] ? "bg-violet-50/50 border-violet-200" : "bg-muted/30 opacity-60"}`}>
-                          <Switch
-                            checked={!!aiToggles[field.key]}
-                            onCheckedChange={(v) => setAiToggles((prev) => ({ ...prev, [field.key]: v }))}
-                            className="mt-0.5 shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium text-muted-foreground mb-0.5">{field.label}</p>
-                            {field.key === "primaryColor" ? (
-                              <div className="flex items-center gap-2">
-                                <div className="h-5 w-5 rounded border" style={{ backgroundColor: display }} />
-                                <Input
-                                  value={display}
-                                  onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
-                                  className="h-7 text-xs max-w-[120px]"
-                                />
-                              </div>
-                            ) : Array.isArray(val) ? (
-                              <div className="flex flex-wrap gap-1">
-                                {val.map((item: string) => (
-                                  <Badge key={item} variant="secondary" className="text-xs">{item}</Badge>
-                                ))}
-                              </div>
-                            ) : field.key === "description" || field.key === "uniqueValueProp" || field.key === "targetAudience" ? (
-                              <Textarea
-                                value={display}
-                                rows={2}
-                                onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
-                                className="text-sm"
-                              />
-                            ) : field.key === "suggestedWritingStyle" ? (
-                              <Select
-                                value={display}
-                                onValueChange={(v) => setAiPreview((prev) => prev ? { ...prev, suggestedWritingStyle: v } : prev)}
-                              >
-                                <SelectTrigger className="h-8 text-sm"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                  <SelectItem value="informative">Informative</SelectItem>
-                                  <SelectItem value="conversational">Conversational</SelectItem>
-                                  <SelectItem value="technical">Technical</SelectItem>
-                                  <SelectItem value="storytelling">Storytelling</SelectItem>
-                                  <SelectItem value="persuasive">Persuasive</SelectItem>
-                                  <SelectItem value="humorous">Humorous</SelectItem>
-                                </SelectContent>
-                              </Select>
-                            ) : (
-                              <Input
-                                value={display}
-                                onChange={(e) => setAiPreview((prev) => prev ? { ...prev, [field.key]: e.target.value } : prev)}
-                                className="h-8 text-sm"
-                              />
-                            )}
+                        <div key={field.key} className={`rounded-lg border p-3 transition-colors ${enabled ? "border-border" : "border-muted opacity-50"}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-sm font-medium">{field.label}</p>
+                            <Switch checked={enabled} onCheckedChange={(v) => setAiEnabled((p) => ({ ...p, [field.key]: v }))} />
                           </div>
+                          {field.key === "primaryColor" ? (
+                            <div className="flex gap-2">
+                              {options.map((color: string, i: number) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => setAiPicks((p) => ({ ...p, [field.key]: i }))}
+                                  className={`h-10 w-10 rounded-lg border-2 transition-all ${selected === i ? "border-violet-500 scale-110 ring-2 ring-violet-200" : "border-transparent hover:scale-105"}`}
+                                  style={{ backgroundColor: color }}
+                                  title={color}
+                                />
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="space-y-1.5">
+                              {options.map((opt: string, i: number) => (
+                                <button
+                                  key={i}
+                                  type="button"
+                                  onClick={() => setAiPicks((p) => ({ ...p, [field.key]: i }))}
+                                  className={`w-full text-left px-3 py-2 rounded-md text-sm transition-all border ${
+                                    selected === i
+                                      ? "bg-violet-50 border-violet-300 text-violet-900 ring-1 ring-violet-200"
+                                      : "bg-muted/30 border-transparent hover:bg-muted/60 text-muted-foreground"
+                                  }`}
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
+
+                    {/* Single-value fields */}
+                    {SINGLE_FIELDS.filter((f) => f.group === group).map((field) => {
+                      const val = (aiRaw as unknown as Record<string, unknown>)[field.key];
+                      if (!val) return null;
+                      const enabled = aiEnabled[field.key] !== false;
+                      return (
+                        <div key={field.key} className={`rounded-lg border p-3 transition-colors ${enabled ? "border-border" : "border-muted opacity-50"}`}>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-sm font-medium">{field.label}</p>
+                            <Switch checked={enabled} onCheckedChange={(v) => setAiEnabled((p) => ({ ...p, [field.key]: v }))} />
+                          </div>
+                          <p className="text-sm text-muted-foreground">{String(val)}</p>
+                        </div>
+                      );
+                    })}
+
+                    {/* Competitors / Products as badges */}
+                    {group === "Brand" && (
+                      <>
+                        {aiRaw.competitors?.length > 0 && (
+                          <div className={`rounded-lg border p-3 transition-colors ${aiEnabled.competitors !== false ? "border-border" : "border-muted opacity-50"}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium">Competitors</p>
+                              <Switch checked={aiEnabled.competitors !== false} onCheckedChange={(v) => setAiEnabled((p) => ({ ...p, competitors: v }))} />
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {aiRaw.competitors.map((c: string) => (
+                                <Badge key={c} variant="secondary" className="text-xs">{c}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {aiRaw.keyProducts?.length > 0 && (
+                          <div className={`rounded-lg border p-3 transition-colors ${aiEnabled.keyProducts !== false ? "border-border" : "border-muted opacity-50"}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-sm font-medium">Products / Features</p>
+                              <Switch checked={aiEnabled.keyProducts !== false} onCheckedChange={(v) => setAiEnabled((p) => ({ ...p, keyProducts: v }))} />
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {aiRaw.keyProducts.map((p: string) => (
+                                <Badge key={p} variant="secondary" className="text-xs">{p}</Badge>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
                   </div>
                 </div>
               ))}
@@ -1167,7 +1197,7 @@ export default function WebsiteSettingsPage() {
             <Button variant="outline" onClick={() => setAiDialogOpen(false)}>Cancel</Button>
             <Button onClick={handleAIApply} className="bg-violet-600 hover:bg-violet-700">
               <CheckCircle2 className="mr-1.5 h-4 w-4" />
-              Apply {Object.values(aiToggles).filter(Boolean).length} Fields
+              Apply {Object.values(aiEnabled).filter(Boolean).length} Fields
             </Button>
           </DialogFooter>
         </DialogContent>

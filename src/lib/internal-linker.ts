@@ -29,12 +29,18 @@ export async function updateOldPostsWithLink(
   postBaseUrl: string  // e.g. "https://blog.example.com" or "https://sub.stackserp.com"
 ): Promise<number> {
   try {
-    const existingPosts = await prisma.blogPost.findMany({
-      where: { websiteId, status: "PUBLISHED", slug: { not: newPostSlug } },
-      select: { id: true, slug: true, title: true, focusKeyword: true, content: true },
-      orderBy: { publishedAt: "desc" },
-      take: 40,
-    });
+    const [existingPosts, website] = await Promise.all([
+      prisma.blogPost.findMany({
+        where: { websiteId, status: "PUBLISHED", slug: { not: newPostSlug } },
+        select: { id: true, slug: true, title: true, focusKeyword: true, content: true },
+        orderBy: { publishedAt: "desc" },
+        take: 40,
+      }),
+      prisma.website.findUnique({
+        where: { id: websiteId },
+        select: { brandName: true, tone: true, niche: true, targetAudience: true },
+      }),
+    ]);
 
     if (existingPosts.length === 0) return 0;
 
@@ -73,7 +79,11 @@ Output ONLY a JSON array of IDs. Example: ["id1","id2","id3"]`;
       // Skip if it already links to this post
       if (post.content.includes(`/${newPostSlug}`)) continue;
 
-      const linkPrompt = `You are an SEO editor. Add ONE natural internal link to the article below, pointing to a new related article.
+      const brandLine = website
+        ? `\nBrand: ${website.brandName} | Tone: ${website.tone || "professional"} | Audience: ${website.targetAudience || "general"}`
+        : "";
+
+      const linkPrompt = `You are an SEO editor. Add ONE natural internal link to the article below, pointing to a new related article.${brandLine}
 
 New article to link to:
 - Title: "${newPostTitle}"
@@ -86,6 +96,7 @@ New article to link to:
 3. Use descriptive, keyword-rich anchor text (not "click here" or "read more")
 4. Keep ALL existing content exactly as-is except for the one link insertion
 5. Output the COMPLETE article — no truncation
+6. Match the existing article's tone and voice
 
 ## Article to update (keyword: "${post.focusKeyword || "n/a"}"):
 ${post.content}

@@ -7,18 +7,18 @@ import { checkAiRateLimit } from "@/lib/api-helpers";
 interface WebsiteAnalysis {
   brandName: string;
   brandUrl: string;
-  primaryColor: string;
-  niche: string;
-  description: string;
-  targetAudience: string;
-  tone: string;
-  uniqueValueProp: string;
+  primaryColor: string[];
+  niche: string[];
+  description: string[];
+  targetAudience: string[];
+  tone: string[];
+  uniqueValueProp: string[];
   competitors: string[];
   keyProducts: string[];
   targetLocation: string;
-  suggestedCtaText: string;
+  suggestedCtaText: string[];
   suggestedCtaUrl: string;
-  suggestedWritingStyle: string;
+  suggestedWritingStyle: string[];
 }
 
 export async function POST(req: Request) {
@@ -101,31 +101,42 @@ Keep it under 300 words.`,
       }
     }
 
-    // Step 2: Use Gemini to generate structured brand + content strategy
+    // Step 2: Use Gemini to generate structured brand + content strategy with options
     const prompt = `You are setting up an AI content marketing platform for a website.
 
 Website Name: "${name}"
 Domain: "${domain}"
 ${perplexityData ? `Research findings:\n${perplexityData}` : `No research data available — infer from the domain name "${domain}" and brand name "${name}".`}
 
-Generate a complete website profile for content generation. Return JSON with exactly these fields:
+Generate a complete website profile for content generation. For key fields, provide 3 different options so the user can choose.
+
+Return JSON with exactly these fields:
 
 {
   "brandName": "clean brand name (e.g. InvoiceCave, not invoicecave.com)",
-  "brandUrl": "full URL with https:// (e.g. https://invoicecave.com)",
-  "primaryColor": "a hex color that fits the brand personality (e.g. #4F46E5 for SaaS, #16A34A for finance, #DC2626 for bold brands)",
-  "niche": "specific niche/industry description (e.g. 'invoicing software for freelancers and small businesses')",
-  "description": "2-3 sentence business description explaining what they do, who they help, and what makes them unique",
-  "targetAudience": "specific target audience description (e.g. 'freelancers, solopreneurs, and small business owners who need simple invoicing tools')",
-  "tone": "writing tone for blog content (e.g. 'professional yet approachable', 'technical and authoritative', 'friendly and educational')",
-  "uniqueValueProp": "1-2 sentences on what makes this business genuinely different from competitors — their key differentiator or USP",
-  "competitors": ["competitor1", "competitor2", "competitor3"],
-  "keyProducts": ["product/feature 1", "product/feature 2", "product/feature 3"],
-  "targetLocation": "primary geographic market (e.g. 'United States', 'Global', 'UK and Europe')",
-  "suggestedCtaText": "a compelling call-to-action for blog readers (e.g. 'Start your free trial', 'Get a free quote', 'Try it free')",
-  "suggestedCtaUrl": "the most logical landing page URL for the CTA (e.g. 'https://domain.com/signup', 'https://domain.com/pricing')",
-  "suggestedWritingStyle": "one of: informative, conversational, technical, storytelling, persuasive, humorous — pick the best fit for this brand's audience"
-}`;
+  "brandUrl": "full URL with https://",
+  "primaryColor": ["#hex1", "#hex2", "#hex3"],
+  "niche": ["option 1 — broad angle", "option 2 — specific angle", "option 3 — alternative angle"],
+  "description": ["description option 1", "description option 2 — different angle", "description option 3 — different framing"],
+  "targetAudience": ["audience option 1 — broad", "audience option 2 — specific", "audience option 3 — niche"],
+  "tone": ["tone option 1 (e.g. professional yet approachable)", "tone option 2 (e.g. technical and authoritative)", "tone option 3 (e.g. friendly and educational)"],
+  "uniqueValueProp": ["USP option 1", "USP option 2 — different angle", "USP option 3 — different framing"],
+  "competitors": ["competitor1", "competitor2", "competitor3", "competitor4", "competitor5"],
+  "keyProducts": ["product1", "product2", "product3", "product4", "product5"],
+  "targetLocation": "primary geographic market",
+  "suggestedCtaText": ["CTA option 1", "CTA option 2", "CTA option 3"],
+  "suggestedCtaUrl": "most logical landing page URL",
+  "suggestedWritingStyle": ["style1", "style2", "style3"]
+}
+
+Rules for the 3 options:
+- Each option should be genuinely DIFFERENT (not rephrased copies)
+- Option 1: most conventional/safe approach
+- Option 2: more specific/targeted approach
+- Option 3: creative/bold approach
+- For "suggestedWritingStyle": pick 3 from: informative, conversational, technical, storytelling, persuasive, humorous
+- For "primaryColor": pick 3 colors that each fit the brand but feel different (e.g. professional blue, energetic orange, modern purple)
+- All descriptions should be 2-3 sentences max`;
 
     const analysis = await generateJSON<WebsiteAnalysis>(prompt);
 

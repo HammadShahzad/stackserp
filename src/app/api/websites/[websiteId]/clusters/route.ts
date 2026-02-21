@@ -66,11 +66,10 @@ export async function POST(
       const website = await prisma.website.findUnique({
         where: { id: websiteId },
         select: {
-          brandUrl: true,
-          brandName: true,
-          niche: true,
-          description: true,
-          targetAudience: true,
+          brandUrl: true, brandName: true, niche: true,
+          description: true, targetAudience: true,
+          uniqueValueProp: true, competitors: true,
+          keyProducts: true, targetLocation: true,
         },
       });
       if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });
@@ -113,11 +112,10 @@ export async function POST(
       const website = await prisma.website.findUnique({
         where: { id: websiteId },
         select: {
-          brandUrl: true,
-          brandName: true,
-          niche: true,
-          description: true,
-          targetAudience: true,
+          brandUrl: true, brandName: true, niche: true,
+          description: true, targetAudience: true,
+          uniqueValueProp: true, competitors: true,
+          keyProducts: true, targetLocation: true,
         },
       });
       if (!website) return NextResponse.json({ error: "Website not found" }, { status: 404 });

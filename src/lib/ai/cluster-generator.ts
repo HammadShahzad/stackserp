@@ -19,13 +19,24 @@ export interface ClusterPreview {
   keywords: ClusterKeyword[];
 }
 
+interface ClusterWebsite {
+  brandUrl: string;
+  brandName: string;
+  niche: string;
+  description: string;
+  targetAudience: string;
+  uniqueValueProp?: string | null;
+  competitors?: string[] | null;
+  keyProducts?: string[] | null;
+  targetLocation?: string | null;
+}
+
 async function researchSeedTopic(
   seedTopic: string,
-  brandUrl: string,
-  niche: string,
-  brandName: string,
+  website: ClusterWebsite,
 ): Promise<string> {
-  // Crawl the website directly instead of wasting Perplexity credits
+  const { brandUrl, niche, brandName } = website;
+
   let siteContext = "";
   try {
     const crawl = await crawlWebsite(brandUrl);
@@ -37,10 +48,19 @@ async function researchSeedTopic(
     // Non-fatal
   }
 
-  // Use Perplexity for competitive research (this IS a valid use — researching what competitors write)
   let apiKey = process.env.PERPLEXITY_API_KEY;
   if (!apiKey) return siteContext || `Topic: ${seedTopic} in the ${niche} space for ${brandName}.`;
   apiKey = apiKey.replace(/\\n/g, "").trim();
+
+  const competitorLine = website.competitors?.length
+    ? `\nKnown competitors: ${website.competitors.join(", ")}. Analyze how they cover this topic.`
+    : "";
+  const productLine = website.keyProducts?.length
+    ? `\nKey products/features: ${website.keyProducts.join(", ")}.`
+    : "";
+  const locationLine = website.targetLocation
+    ? `\nPrimary market: ${website.targetLocation}.`
+    : "";
 
   try {
     const res = await fetch("https://api.perplexity.ai/chat/completions", {
@@ -59,6 +79,7 @@ async function researchSeedTopic(
           {
             role: "user",
             content: `Research the topic "${seedTopic}" for a content cluster for ${brandName} (${brandUrl}), which is a ${niche} business.
+Target audience: ${website.targetAudience}${competitorLine}${productLine}${locationLine}
 
 IMPORTANT: All research must be specifically relevant to the ${niche} niche and ${brandName}'s audience. Do not suggest topics outside this niche.
 
@@ -67,7 +88,7 @@ I need:
 2. 15-20 long-tail keyword variations of "${seedTopic}" that are relevant to ${niche}
 3. Specific subtopics that top-ranking pages cover for this niche
 4. Common questions ${niche} audiences ask about "${seedTopic}"
-5. Content gaps — what are competitors missing about "${seedTopic}" in the ${niche} space?
+5. Content gaps — what are competitors missing about "${seedTopic}" in the ${niche} space?${website.competitors?.length ? `\n6. How do ${website.competitors.join(", ")} cover "${seedTopic}"? What angles do they miss?` : ""}
 
 Stay strictly within the ${niche} niche.`,
           },
@@ -89,25 +110,21 @@ Stay strictly within the ${niche} niche.`,
 
 export async function generateClusterPreview(
   seedTopic: string,
-  website: {
-    brandUrl: string;
-    brandName: string;
-    niche: string;
-    description: string;
-    targetAudience: string;
-  },
+  website: ClusterWebsite,
   existingKeywords: string[] = [],
 ): Promise<ClusterPreview> {
-  const research = await researchSeedTopic(
-    seedTopic,
-    website.brandUrl,
-    website.niche,
-    website.brandName,
-  );
+  const research = await researchSeedTopic(seedTopic, website);
 
   const existingSection = existingKeywords.length > 0
     ? `\n\nExisting keywords already in the queue (avoid duplicates):\n${existingKeywords.slice(0, 40).join(", ")}`
     : "";
+
+  const extraContext = [
+    website.uniqueValueProp ? `- USP: ${website.uniqueValueProp}` : "",
+    website.competitors?.length ? `- Competitors: ${website.competitors.join(", ")}` : "",
+    website.keyProducts?.length ? `- Products/Features: ${website.keyProducts.join(", ")}` : "",
+    website.targetLocation ? `- Primary market: ${website.targetLocation}` : "",
+  ].filter(Boolean).join("\n");
 
   const result = await generateJSON<ClusterPreview>(
     `You are an SEO content strategist for ${website.brandName}, a ${website.niche} business. Create a topic cluster for "${seedTopic}".
@@ -117,6 +134,7 @@ export async function generateClusterPreview(
 - Niche: ${website.niche}
 - Description: ${website.description}
 - Target audience: ${website.targetAudience}
+${extraContext}
 
 ## Research Data:
 ${research.substring(0, 4000)}${existingSection}

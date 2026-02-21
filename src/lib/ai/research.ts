@@ -22,6 +22,11 @@ export async function researchKeyword(
     brandName: string;
     targetAudience: string;
     description?: string;
+    uniqueValueProp?: string;
+    competitors?: string[];
+    keyProducts?: string[];
+    targetLocation?: string;
+    tone?: string;
   }
 ): Promise<ResearchResult> {
   let apiKey = process.env.PERPLEXITY_API_KEY;
@@ -31,9 +36,19 @@ export async function researchKeyword(
   }
   apiKey = apiKey.replace(/\\n/g, "").trim();
 
-  const prompt = `Research this topic thoroughly for an SEO blog post: "${keyword}".${websiteContext.description ? ` Additional context: ${websiteContext.description}.` : ""}
+  const brandContext = [
+    `The blog is for ${websiteContext.brandName}, a ${websiteContext.niche} platform targeting ${websiteContext.targetAudience}.`,
+    websiteContext.description ? `Business: ${websiteContext.description}` : "",
+    websiteContext.uniqueValueProp ? `USP: ${websiteContext.uniqueValueProp}` : "",
+    websiteContext.competitors?.length ? `Key competitors: ${websiteContext.competitors.join(", ")}` : "",
+    websiteContext.keyProducts?.length ? `Products/features: ${websiteContext.keyProducts.join(", ")}` : "",
+    websiteContext.targetLocation ? `Primary market: ${websiteContext.targetLocation}` : "",
+    websiteContext.tone ? `Brand tone: ${websiteContext.tone}` : "",
+  ].filter(Boolean).join("\n");
 
-The blog is for ${websiteContext.brandName}, a ${websiteContext.niche} platform targeting ${websiteContext.targetAudience}.
+  const prompt = `Research this topic thoroughly for an SEO blog post: "${keyword}".
+
+${brandContext}
 
 Provide ALL of the following:
 1. Factual, up-to-date data, statistics, expert insights, and actionable information
@@ -45,7 +60,7 @@ Provide ALL of the following:
 7. Key statistics and data points that would strengthen the article — cite sources where possible
 8. Related subtopics worth covering to be comprehensive
 9. UNIQUE ANGLE: What is a fresh, contrarian, or underexplored perspective on this topic that most articles don't take? What would make a reader say "I've never thought about it that way"?
-10. SPECIFIC EXAMPLES: Name real tools, companies, people, or case studies related to this topic that could be referenced in the article`;
+10. SPECIFIC EXAMPLES: Name real tools, companies, people, or case studies related to this topic that could be referenced in the article${websiteContext.competitors?.length ? `\n11. COMPETITOR ANALYSIS: How do ${websiteContext.competitors.join(", ")} cover this topic? What can we do better?` : ""}`;
 
   try {
     const response = await fetch("https://api.perplexity.ai/chat/completions", {
